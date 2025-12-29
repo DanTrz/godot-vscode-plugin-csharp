@@ -26,8 +26,10 @@ import { GodotDebugSession as Godot3DebugSession } from "./godot3/debug_session"
 import { GodotDebugSession as Godot4DebugSession } from "./godot4/debug_session";
 import { GodotObject } from "./godot4/variables/godot_object_promise";
 import { InspectorProvider, RemoteProperty } from "./inspector_provider";
+import { InspectorWebView } from "./inspector_webview";
 import { SceneNode, SceneTreeProvider } from "./scene_tree_provider";
 import { SceneTreeMonitor } from "./scene_tree_monitor";
+import { GameDebugControlsProvider } from "./game_debug_controls_provider";
 
 const log = createLogger("debugger", { output: "Godot Debugger" });
 
@@ -82,7 +84,9 @@ class GDFileDecorationProvider implements FileDecorationProvider {
 export class GodotDebugger implements DebugAdapterDescriptorFactory, DebugConfigurationProvider {
 	public session?: Godot3DebugSession | Godot4DebugSession;
 	public sceneTree = new SceneTreeProvider();
-	public inspector = new InspectorProvider();
+	public inspectorOld = new InspectorProvider(); // Keep for session compatibility
+	public inspectorWebView: InspectorWebView;
+	public gameDebugControls = new GameDebugControlsProvider();
 	public sceneTreeMonitor: SceneTreeMonitor;
 
 	fileDecorations = new GDFileDecorationProvider();
@@ -92,8 +96,23 @@ export class GodotDebugger implements DebugAdapterDescriptorFactory, DebugConfig
 
 		this.restore_pinned_file();
 
+		// Initialize WebView Inspector
+		this.inspectorWebView = new InspectorWebView(context.extensionUri);
+
 		// Initialize Scene Tree Monitor for C# projects
-		this.sceneTreeMonitor = new SceneTreeMonitor(this.sceneTree, this.inspector);
+		this.sceneTreeMonitor = new SceneTreeMonitor(this.sceneTree, this.inspectorWebView, this.gameDebugControls);
+
+		// Set up the edit callbacks for the WebView inspector
+		this.inspectorWebView.setEditCallback(this.handleWebViewEdit.bind(this));
+		this.inspectorWebView.setEditCompoundCallback(this.handleWebViewCompoundEdit.bind(this));
+
+		// Set up the inspect object callback for drilling into resources (ObjectId)
+		this.inspectorWebView.setInspectObjectCallback(this.handleWebViewInspectObject.bind(this));
+
+		// Register WebView provider FIRST to avoid "No view is registered" error on startup
+		context.subscriptions.push(
+			window.registerWebviewViewProvider(InspectorWebView.viewType, this.inspectorWebView),
+		);
 
 		context.subscriptions.push(
 			debug.registerDebugConfigurationProvider("godot", this),
@@ -110,10 +129,14 @@ export class GodotDebugger implements DebugAdapterDescriptorFactory, DebugConfig
 			register_command("debugger.openPinnedFile", this.open_pinned_file.bind(this)),
 			// Scene Tree Monitor commands
 			register_command("sceneTreeMonitor.stop", this.stop_scene_tree_monitor.bind(this)),
+			// Debug control commands (Tier 1 features)
+			register_command("debugger.pause", this.pause_game.bind(this)),
+			register_command("debugger.resume", this.resume_game.bind(this)),
+			register_command("debugger.nextFrame", this.next_frame.bind(this)),
 			// Auto-start Scene Tree Monitor for C# debug sessions
 			debug.onDidStartDebugSession(this.on_debug_session_start.bind(this)),
-			this.inspector.view,
 			this.sceneTree.view,
+			this.gameDebugControls.view,
 		);
 	}
 
@@ -130,10 +153,10 @@ export class GodotDebugger implements DebugAdapterDescriptorFactory, DebugConfig
 		this.context.subscriptions.push(this.session);
 
 		this.session.sceneTree = this.sceneTree;
-		this.session.inspector = this.inspector;
+		this.session.inspector = this.inspectorOld; // Session still uses old provider for internal logic
 
 		this.sceneTree.clear();
-		this.inspector.clear();
+		this.inspectorWebView.clear();
 
 		return new DebugAdapterInlineImplementation(this.session);
 	}
@@ -308,11 +331,11 @@ export class GodotDebugger implements DebugAdapterDescriptorFactory, DebugConfig
 				return;
 			}
 			const va = this.create_godot_variable(godot_object);
-			this.inspector.fill_tree(element.label, godot_object.type, Number(godot_object.godot_id), va);
+			this.inspectorWebView.fill_tree(element.label, godot_object.type, Number(godot_object.godot_id), va);
 		} else {
 			this.session?.controller.request_inspect_object(BigInt(element.object_id));
 			this.session?.inspect_callbacks.set(BigInt(element.object_id), (class_name, variable) => {
-				this.inspector.fill_tree(element.label, class_name, Number(element.object_id), variable);
+				this.inspectorWebView.fill_tree(element.label, class_name, Number(element.object_id), variable);
 			});
 		}
 	}
@@ -340,6 +363,19 @@ export class GodotDebugger implements DebugAdapterDescriptorFactory, DebugConfig
 	// Scene Tree Monitor methods
 	public stop_scene_tree_monitor() {
 		this.sceneTreeMonitor.stop();
+	}
+
+	// Debug control methods (Tier 1 features)
+	public pause_game() {
+		this.sceneTreeMonitor.pause();
+	}
+
+	public resume_game() {
+		this.sceneTreeMonitor.resume();
+	}
+
+	public next_frame() {
+		this.sceneTreeMonitor.nextFrame();
 	}
 
 	/**
@@ -375,17 +411,33 @@ export class GodotDebugger implements DebugAdapterDescriptorFactory, DebugConfig
 	}
 
 	public async refresh_inspector() {
-		if (this.inspector.has_tree()) {
-			const item = this.inspector.get_top_item();
-			await this.fill_inspector(item, /*force_refresh*/ true);
+		if (this.inspectorWebView.has_tree()) {
+			const item = this.inspectorWebView.get_top_item();
+			if (item) {
+				// Create a minimal element for fill_inspector
+				await this.fill_inspector({ label: item.label, object_id: item.object_id } as SceneNode, /*force_refresh*/ true);
+			}
 		}
 	}
 
 	public async edit_value(property: RemoteProperty) {
+		// Guard against undefined value (can happen with compound type sub-properties)
+		if (property.value === undefined) {
+			log.warn(`Cannot edit property '${property.label}': value is undefined`);
+			window.showWarningMessage(`Cannot edit '${property.label}': value is undefined. This may be a compound type that requires editing individual components.`);
+			return;
+		}
+
 		const previous_value = property.value;
 		const type = typeof previous_value;
-		const is_float = type === "number" && !Number.isInteger(previous_value);
+		// For compound type sub-properties (Vector3.x, Color.r, etc.), always treat as float
+		// because compound types use floats even if the current value happens to be a whole number
+		const is_compound_child = property.changes_parent === true;
+		const is_float = type === "number" && (is_compound_child || !Number.isInteger(previous_value));
 		const value = await window.showInputBox({ value: `${property.description}` });
+		if (value === undefined) {
+			return; // User cancelled
+		}
 		let new_parsed_value: any;
 		switch (type) {
 			case "string":
@@ -413,22 +465,156 @@ export class GodotDebugger implements DebugAdapterDescriptorFactory, DebugConfig
 					return;
 				}
 		}
+
+		// Determine which backend to use for setting the property
+		const useSceneTreeMonitor = this.sceneTreeMonitor.isConnected;
+
+		log.info(`Editing property '${property.label}': changes_parent=${property.changes_parent}, parent=${property.parent?.label}, value=${new_parsed_value}`);
+
 		if (property.changes_parent) {
+			// Check if parent exists
+			if (!property.parent) {
+				log.error(`Cannot edit '${property.label}': changes_parent is true but parent is undefined`);
+				window.showWarningMessage(`Cannot edit '${property.label}': parent property is missing`);
+				return;
+			}
+
 			const parents = [property.parent];
 			let idx = 0;
-			while (parents[idx].changes_parent) {
+			while (parents[idx]?.changes_parent) {
+				if (!parents[idx].parent) {
+					log.error(`Cannot edit '${property.label}': parent chain is broken at '${parents[idx].label}'`);
+					window.showWarningMessage(`Cannot edit '${property.label}': parent chain is incomplete`);
+					return;
+				}
 				parents.push(parents[idx++].parent);
 			}
-			const changed_value = this.inspector.get_changed_value(parents, property, new_parsed_value);
-			this.session?.controller.set_object_property(BigInt(property.object_id), parents[idx].label, changed_value);
+
+			log.info(`Parent chain: ${parents.map(p => p.label).join(" -> ")}, root index: ${idx}`);
+
+			const changed_value = this.inspectorOld.get_changed_value(parents, property, new_parsed_value);
+			log.info(`Setting property '${parents[idx].label}' with changed value:`, changed_value);
+
+			if (useSceneTreeMonitor) {
+				this.sceneTreeMonitor.setObjectProperty(BigInt(property.object_id), parents[idx].label, changed_value);
+			} else {
+				this.session?.controller.set_object_property(BigInt(property.object_id), parents[idx].label, changed_value);
+			}
 		} else {
-			this.session?.controller.set_object_property(BigInt(property.object_id), property.label, new_parsed_value);
+			log.info(`Setting property '${property.label}' directly to:`, new_parsed_value);
+			if (useSceneTreeMonitor) {
+				this.sceneTreeMonitor.setObjectProperty(BigInt(property.object_id), property.label, new_parsed_value);
+			} else {
+				this.session?.controller.set_object_property(BigInt(property.object_id), property.label, new_parsed_value);
+			}
 		}
 
-		const item = this.inspector.get_top_item();
-		await this.fill_inspector(item, /*force_refresh*/ true);
+		// Refresh the inspector to show updated values
+		if (useSceneTreeMonitor) {
+			// For Scene Tree Monitor, re-inspect the object
+			this.sceneTreeMonitor.refreshInspector();
+		} else if (this.inspectorOld.has_tree()) {
+			const item = this.inspectorOld.get_top_item();
+			await this.fill_inspector(item, /*force_refresh*/ true);
+		}
 
-		// const res = await debug.activeDebugSession?.customRequest("refreshVariables"); // refresh vscode.debug variables
-		this.session.sendEvent(new InvalidatedEvent(["variables"]));
+		// Refresh VSCode debug variables if session exists
+		if (this.session) {
+			this.session.sendEvent(new InvalidatedEvent(["variables"]));
+		}
+	}
+
+	/**
+	 * Handle compound value edit requests from the WebView inspector.
+	 * This is called when the user edits a compound type (Vector3, Color, etc.) inline.
+	 * The value is already reconstructed by the WebView.
+	 */
+	private handleWebViewCompoundEdit(objectId: number, propertyName: string, reconstructedValue: any): void {
+		const useSceneTreeMonitor = this.sceneTreeMonitor.isConnected;
+
+		log.info(`WebView compound edit: Setting property '${propertyName}' to:`, reconstructedValue);
+
+		if (useSceneTreeMonitor) {
+			this.sceneTreeMonitor.setObjectProperty(BigInt(objectId), propertyName, reconstructedValue);
+		} else {
+			this.session?.controller.set_object_property(BigInt(objectId), propertyName, reconstructedValue);
+		}
+
+		// Refresh the inspector to show updated values
+		if (useSceneTreeMonitor) {
+			this.sceneTreeMonitor.refreshInspector();
+		} else {
+			this.refresh_inspector();
+		}
+
+		// Refresh VSCode debug variables if session exists
+		if (this.session) {
+			this.session.sendEvent(new InvalidatedEvent(["variables"]));
+		}
+	}
+
+	/**
+	 * Handle clicking on an ObjectId to drill down into a resource.
+	 * This allows inspecting nested resources like Materials, Meshes, Textures, etc.
+	 */
+	private handleWebViewInspectObject(objectIdStr: string): void {
+		const objectId = BigInt(objectIdStr);
+
+		log.info(`WebView inspect object: Drilling into ObjectId ${objectId}`);
+
+		// Use Scene Tree Monitor if connected (C# projects)
+		if (this.sceneTreeMonitor.isConnected) {
+			this.sceneTreeMonitor.inspectObject("Resource", objectId);
+		} else if (this.session) {
+			// Use debug session for GDScript projects
+			// Create a minimal element for fill_inspector
+			this.fill_inspector({ label: "Resource", object_id: Number(objectId) } as SceneNode, /*force_refresh*/ true);
+		}
+	}
+
+	/**
+	 * Handle edit requests from the WebView inspector.
+	 * This is called when the user edits a value inline in the WebView.
+	 */
+	private handleWebViewEdit(objectId: number, propertyPath: string[], newValue: any, changesParent: boolean): void {
+		const useSceneTreeMonitor = this.sceneTreeMonitor.isConnected;
+
+		// For simple properties (not changing parent), just set directly
+		if (!changesParent || propertyPath.length === 1) {
+			const propertyName = propertyPath[propertyPath.length - 1];
+			log.info(`WebView edit: Setting property '${propertyName}' to:`, newValue);
+
+			if (useSceneTreeMonitor) {
+				this.sceneTreeMonitor.setObjectProperty(BigInt(objectId), propertyName, newValue);
+			} else {
+				this.session?.controller.set_object_property(BigInt(objectId), propertyName, newValue);
+			}
+		} else {
+			// For compound properties (e.g., Vector3.x), we need to reconstruct the parent
+			// This is more complex and requires getting the current value first
+			// For now, we'll handle simple cases and log a warning for complex ones
+			const propertyName = propertyPath[0]; // The top-level property
+			log.warn(`WebView edit: Complex property edit for '${propertyPath.join(".")}' - requires parent reconstruction`);
+
+			// TODO: Implement proper parent reconstruction for compound types
+			// For now, try to set the leaf property directly
+			if (useSceneTreeMonitor) {
+				this.sceneTreeMonitor.setObjectProperty(BigInt(objectId), propertyPath[propertyPath.length - 1], newValue);
+			} else {
+				this.session?.controller.set_object_property(BigInt(objectId), propertyPath[propertyPath.length - 1], newValue);
+			}
+		}
+
+		// Refresh the inspector to show updated values
+		if (useSceneTreeMonitor) {
+			this.sceneTreeMonitor.refreshInspector();
+		} else {
+			this.refresh_inspector();
+		}
+
+		// Refresh VSCode debug variables if session exists
+		if (this.session) {
+			this.session.sendEvent(new InvalidatedEvent(["variables"]));
+		}
 	}
 }

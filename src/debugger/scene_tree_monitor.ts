@@ -6,10 +6,20 @@ import {
 	set_context,
 } from "../utils";
 import { GodotVariable } from "./debug_runtime";
-import { InspectorProvider } from "./inspector_provider";
+import { GameDebugControlsProvider } from "./game_debug_controls_provider";
 import { killSubProcesses } from "../utils/subspawn";
 import { InspectedObject, SceneTreeClient } from "./scene_tree_client";
 import { SceneTreeProvider } from "./scene_tree_provider";
+
+/**
+ * Interface for inspector providers (TreeView or WebView).
+ */
+interface IInspectorProvider {
+	fill_tree(element_name: string, class_name: string, object_id: number, variable: GodotVariable): void;
+	clear(): void;
+	/** Check if user is currently editing (optional - only WebView has this) */
+	isCurrentlyEditing?: boolean;
+}
 
 const log = createLogger("debugger.scene_tree_monitor", { output: "Godot Scene Tree" });
 
@@ -30,7 +40,8 @@ export class SceneTreeMonitor {
 
 	constructor(
 		private sceneTree: SceneTreeProvider,
-		private inspector: InspectorProvider,
+		private inspector: IInspectorProvider,
+		private gameDebugControls: GameDebugControlsProvider,
 	) {
 		this.client = new SceneTreeClient();
 
@@ -44,6 +55,7 @@ export class SceneTreeMonitor {
 			log.info("Godot connected");
 			this.updateStatusBar();
 			this.sceneTree.view.message = undefined;
+			this.gameDebugControls.updateState(true, this.client.isPaused);
 
 			// Initial scene tree request
 			setTimeout(() => this.client.requestSceneTree(), 500);
@@ -71,6 +83,14 @@ export class SceneTreeMonitor {
 			log.error("Client error:", error);
 			vscode.window.showErrorMessage(`Scene Tree Monitor error: ${error.message}`);
 		});
+
+		// Track pause state changes
+		this.client.onPauseStateChanged((isPaused) => {
+			log.info(`Pause state changed: ${isPaused}`);
+			set_context("sceneTreeMonitor.paused", isPaused);
+			this.updateStatusBar();
+			this.gameDebugControls.updateState(true, isPaused);
+		});
 	}
 
 	public get isRunning(): boolean {
@@ -79,6 +99,67 @@ export class SceneTreeMonitor {
 
 	public get isConnected(): boolean {
 		return this.client.isConnected;
+	}
+
+	public get isPaused(): boolean {
+		return this.client.isPaused;
+	}
+
+	// ========================================
+	// Debug Control Methods (Tier 1 Features)
+	// ========================================
+
+	/**
+	 * Pause game execution.
+	 * Uses native debug protocol command - works without project modification.
+	 */
+	public pause(): void {
+		if (!this.client.isConnected) {
+			log.warn("Cannot pause: not connected");
+			return;
+		}
+		this.client.pause();
+	}
+
+	/**
+	 * Resume game execution.
+	 * Uses native debug protocol command - works without project modification.
+	 */
+	public resume(): void {
+		if (!this.client.isConnected) {
+			log.warn("Cannot resume: not connected");
+			return;
+		}
+		this.client.resume();
+	}
+
+	/**
+	 * Advance exactly one frame then pause again.
+	 * Requires the game to be paused first (via scene suspension).
+	 */
+	public nextFrame(): void {
+		if (!this.client.isConnected) {
+			log.warn("Cannot step frame: not connected");
+			return;
+		}
+		if (!this.client.isPaused) {
+			log.warn("Cannot step frame: game must be paused first");
+			vscode.window.showWarningMessage("Cannot step frame: pause the game first");
+			return;
+		}
+		this.client.nextFrame();
+	}
+
+	/**
+	 * Set a property on a remote object.
+	 * Changes are RUNTIME ONLY - scene files are not modified.
+	 */
+	public setObjectProperty(objectId: bigint, property: string, value: any): void {
+		if (!this.client.isConnected) {
+			log.warn("Cannot set property: not connected");
+			return;
+		}
+		this.client.setObjectProperty(objectId, property, value);
 	}
 
 	/**
@@ -107,6 +188,10 @@ export class SceneTreeMonitor {
 		if (refreshMs > 0) {
 			this.refreshInterval = setInterval(() => {
 				if (this.client.isConnected) {
+					// Skip refresh if user is currently editing a value
+					if (this.inspector.isCurrentlyEditing) {
+						return;
+					}
 					this.client.requestSceneTree();
 					// Also refresh the inspector if we have a currently inspected object
 					this.refreshInspector();
@@ -133,10 +218,12 @@ export class SceneTreeMonitor {
 		this.client.stop();
 		this._isRunning = false;
 		set_context("sceneTreeMonitor.running", false);
+		set_context("sceneTreeMonitor.paused", false);
 		this.updateStatusBar();
 		this.sceneTree.clear();
 		this.sceneTree.view.description = undefined;
 		this.sceneTree.view.message = undefined;
+		this.gameDebugControls.updateState(false, false);
 
 		// Clear inspection state
 		this.clearInspection();

@@ -14,7 +14,7 @@ import {
 	GDTaskProvider,
 } from "./providers";
 import { ClientConnectionManager } from "./lsp";
-import { ScenePreviewProvider } from "./scene_tools";
+import { ScenePreviewWebviewProvider } from "./scene_tools";
 import { GodotDebugger } from "./debugger";
 import { FormattingProvider } from "./formatter";
 import {
@@ -36,7 +36,7 @@ interface Extension {
 	context?: vscode.ExtensionContext;
 	lsp?: ClientConnectionManager;
 	debug?: GodotDebugger;
-	scenePreviewProvider?: ScenePreviewProvider;
+	scenePreviewProvider?: ScenePreviewWebviewProvider;
 	linkProvider?: GDDocumentLinkProvider;
 	dropsProvider?: GDDocumentDropEditProvider;
 	hoverProvider?: GDHoverProvider;
@@ -57,7 +57,16 @@ export function activate(context: vscode.ExtensionContext) {
 	globals.context = context;
 	globals.lsp = new ClientConnectionManager(context);
 	globals.debug = new GodotDebugger(context);
-	globals.scenePreviewProvider = new ScenePreviewProvider(context);
+
+	// Register the Scene Preview WebView
+	globals.scenePreviewProvider = new ScenePreviewWebviewProvider(context);
+	context.subscriptions.push(
+		vscode.window.registerWebviewViewProvider(
+			ScenePreviewWebviewProvider.viewType,
+			globals.scenePreviewProvider,
+		),
+	);
+
 	globals.linkProvider = new GDDocumentLinkProvider(context);
 	globals.dropsProvider = new GDDocumentDropEditProvider(context);
 	globals.hoverProvider = new GDHoverProvider(context);
