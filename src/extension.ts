@@ -78,6 +78,13 @@ export function activate(context: vscode.ExtensionContext) {
 	// globals.completionProvider = new GDCompletionItemProvider(context);
 	// globals.tasksProvider = new GDTaskProvider(context);
 
+	// Reset provider state when LSP disconnects
+	context.subscriptions.push(
+		globals.lsp.onLSPDisconnected(() => {
+			globals.docsProvider.reset();
+		}),
+	);
+
 	context.subscriptions.push(
 		register_command("openEditor", open_workspace_with_editor),
 		register_command("openEditorSettings", open_godot_editor_settings),

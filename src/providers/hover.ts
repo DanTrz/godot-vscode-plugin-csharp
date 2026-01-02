@@ -22,6 +22,7 @@ export class GDHoverProvider implements HoverProvider {
 			{ language: "gdresource", scheme: "file" },
 			{ language: "gdscene", scheme: "file" },
 			{ language: "gdscript", scheme: "file" },
+			{ language: "csharp", scheme: "file" },
 		];
 		context.subscriptions.push(
 			vscode.languages.registerHoverProvider(selector, this),
@@ -36,7 +37,7 @@ export class GDHoverProvider implements HoverProvider {
 				links += `* [${match[0]}](${uri})\n`;
 			}
 		}
-		for (const match of text.matchAll(/uid:\/\/[0-9a-z]*/g)) {
+		for (const match of text.matchAll(/uid:\/\/[0-9a-zA-Z]*/g)) {
 			const uri = await convert_uid_to_uri(match[0]);
 			if (uri instanceof Uri) {
 				links += `* [${match[0]}](${uri})\n`;
@@ -95,9 +96,11 @@ export class GDHoverProvider implements HoverProvider {
 		}
 
 		let link = document.getText(document.getWordRangeAtPosition(position, /res:\/\/[^"^']*/));
+		let originalUid = "";
 		if (!link.startsWith("res://")) {
-			link = document.getText(document.getWordRangeAtPosition(position, /uid:\/\/[0-9a-z]*/));
+			link = document.getText(document.getWordRangeAtPosition(position, /uid:\/\/[0-9a-zA-Z]*/));
 			if (link.startsWith("uid://")) {
+				originalUid = link;
 				const uri = await convert_uid_to_uri(link);
 				link = await convert_uri_to_resource_path(uri);
 			}
@@ -121,6 +124,12 @@ export class GDHoverProvider implements HoverProvider {
 
 			const uri = await convert_resource_path_to_uri(link);
 			const contents = new MarkdownString();
+
+			// Show the resolved file path (especially useful for UIDs)
+			if (originalUid) {
+				contents.appendMarkdown(`**File:** \`${link}\`\n\n`);
+			}
+
 			if (type === "image") {
 				contents.appendMarkdown(`<img src="${uri}" min-width=100px max-width=500px/>`);
 				contents.supportHtml = true;

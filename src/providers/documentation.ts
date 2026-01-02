@@ -28,6 +28,17 @@ export class GDDocumentationProvider implements CustomReadonlyEditorProvider {
 
 	private ready = false;
 
+	/**
+	 * Resets the provider state. Called when LSP disconnects to clear stale data.
+	 */
+	public reset() {
+		this.ready = false;
+		this.classInfo.clear();
+		this.symbolDb.clear();
+		this.htmlDb.clear();
+		log.info("Documentation provider reset");
+	}
+
 	constructor(private context: ExtensionContext) {
 		const options = {
 			webviewOptions: {

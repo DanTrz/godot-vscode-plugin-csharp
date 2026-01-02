@@ -12,7 +12,7 @@ import {
 } from "vscode-languageclient/node";
 
 import { globals } from "../extension";
-import { createLogger, get_configuration, get_project_dir } from "../utils";
+import { createLogger, get_configuration, get_project_dir, convert_uid_to_uri, convert_uri_to_resource_path } from "../utils";
 import { MessageIO } from "./MessageIO";
 
 const log = createLogger("lsp.client", { output: "Godot LSP" });
@@ -77,6 +77,7 @@ type DocumentLinkResult = {
 		};
 	};
 	target: string;
+	tooltip?: string;
 };
 
 type DocumentLinkResponseMessage = {
@@ -218,8 +219,11 @@ export default class GDScriptLanguageClient extends LanguageClient {
 		return message;
 	}
 
-	private response_filter(message: ResponseMessage) {
+	private async response_filter(message: ResponseMessage) {
 		const sentMessage = this.sentMessages.get(message.id);
+		// Clean up processed request to prevent memory leak
+		this.sentMessages.delete(message.id);
+
 		if (sentMessage?.method === "textDocument/hover") {
 			// fix markdown contents
 			let value: string = (message as HoverResponseMesssage).result.contents.value;
@@ -242,7 +246,7 @@ export default class GDScriptLanguageClient extends LanguageClient {
 
 				(message as HoverResponseMesssage).result.contents.value = value;
 			}
-		} else if (sentMessage.method === "textDocument/documentLink") {
+		} else if (sentMessage?.method === "textDocument/documentLink") {
 			const results: DocumentLinkResult[] = (
 				message as DocumentLinkResponseMessage
 			).result;
@@ -251,23 +255,22 @@ export default class GDScriptLanguageClient extends LanguageClient {
 				return message;
 			}
 
-			const final_result: DocumentLinkResult[] = [];
-			// at this point, Godot's LSP server does not
-			// return a valid path for resources identified
-			// by "uid://""
-			//
-			// this is a dirty hack to remove any "uid://"
-			// document links.
-			//
-			// to provide links for these, we will be relying on
-			// the internal DocumentLinkProvider instead.
+			// Resolve uid:// links to actual file paths and add tooltips
 			for (const result of results) {
-				if (!result.target.startsWith("uid://")) {
-					final_result.push(result);
+				if (result.target.startsWith("uid://")) {
+					try {
+						const fileUri = await convert_uid_to_uri(result.target);
+						if (fileUri) {
+							// Get res:// path for tooltip
+							const resourcePath = await convert_uri_to_resource_path(fileUri);
+							result.target = fileUri.toString();
+							result.tooltip = resourcePath || result.target;
+						}
+					} catch (e) {
+						log.warn("Failed to resolve UID:", result.target, e);
+					}
 				}
 			}
-
-			(message as DocumentLinkResponseMessage).result = final_result;
 		}
 
 		return message;
@@ -289,6 +292,8 @@ export default class GDScriptLanguageClient extends LanguageClient {
 		}
 		if (message.method === "gdscript/capabilities") {
 			globals.docsProvider.register_capabilities(message);
+			// Signal to the connection manager that LSP is fully initialized
+			globals.lsp.onCapabilitiesReceived();
 		}
 
 		// if (message.method === "textDocument/publishDiagnostics") {

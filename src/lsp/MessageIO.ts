@@ -23,7 +23,7 @@ export class MessageIO extends EventEmitter {
 	writer = new MessageIOWriter(this);
 
 	requestFilter: (msg: RequestMessage) => RequestMessage | false = (msg) => msg;
-	responseFilter: (msg: ResponseMessage) => ResponseMessage | false = (msg) => msg;
+	responseFilter: (msg: ResponseMessage) => Promise<ResponseMessage | false> | ResponseMessage | false = (msg) => msg;
 	notificationFilter: (msg: NotificationMessage) => NotificationMessage | false = (msg) => msg;
 
 	socket: Socket = null;
@@ -53,11 +53,17 @@ export class MessageIO extends EventEmitter {
 			});
 			// socket.on("end", this.on_disconnected.bind(this));
 			socket.on("error", () => {
-				this.socket = null;
+				if (this.socket) {
+					this.socket.destroy();
+					this.socket = null;
+				}
 				this.emit("disconnected");
 			});
 			socket.on("close", () => {
-				this.socket = null;
+				if (this.socket) {
+					this.socket.destroy();
+					this.socket = null;
+				}
 				this.emit("disconnected");
 			});
 		});
@@ -75,24 +81,55 @@ export class MessageIO extends EventEmitter {
 export class MessageIOReader extends AbstractMessageReader implements MessageReader {
 	callback: DataCallback;
 	private buffer = new MessageBuffer(this);
+	private listeners: { event: string; handler: (...args: any[]) => void }[] = [];
 
 	constructor(public io: MessageIO) {
 		super();
 	}
 
 	listen(callback: DataCallback): Disposable {
+		// Clean up any existing listeners first
+		this.disposeListeners();
 		this.buffer.reset();
 
 		this.callback = callback;
 
-		this.io.on("data", this.on_data.bind(this));
-		this.io.on("error", this.fireError.bind(this));
-		this.io.on("close", this.fireClose.bind(this));
-		return;
+		// Track listeners for cleanup
+		const dataHandler = this.on_data.bind(this);
+		const errorHandler = this.fireError.bind(this);
+		const closeHandler = this.fireClose.bind(this);
+
+		this.io.on("data", dataHandler);
+		this.io.on("error", errorHandler);
+		this.io.on("close", closeHandler);
+
+		this.listeners = [
+			{ event: "data", handler: dataHandler },
+			{ event: "error", handler: errorHandler },
+			{ event: "close", handler: closeHandler },
+		];
+
+		// Return proper Disposable
+		return {
+			dispose: () => {
+				this.disposeListeners();
+			},
+		};
+	}
+
+	private disposeListeners() {
+		for (const { event, handler } of this.listeners) {
+			this.io.off(event, handler);
+		}
+		this.listeners = [];
 	}
 
 	private on_data(data: Buffer | string): void {
 		this.buffer.append(data);
+		this.processMessages();
+	}
+
+	private async processMessages(): Promise<void> {
 		while (true) {
 			const msg = this.buffer.ready();
 			if (!msg) {
@@ -102,7 +139,7 @@ export class MessageIOReader extends AbstractMessageReader implements MessageRea
 			// allow message to be modified
 			let modified: ResponseMessage | NotificationMessage | false;
 			if ("id" in json) {
-				modified = this.io.responseFilter(json);
+				modified = await this.io.responseFilter(json);
 			} else if ("method" in json) {
 				modified = this.io.notificationFilter(json);
 			} else {
