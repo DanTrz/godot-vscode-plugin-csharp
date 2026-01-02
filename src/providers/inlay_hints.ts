@@ -14,7 +14,6 @@ import {
 	TextEdit,
 } from "vscode";
 import { globals } from "../extension";
-import { ManagerStatus } from "../lsp";
 import { SceneParser } from "../scene_tools";
 import { createLogger, get_configuration } from "../utils";
 
@@ -75,13 +74,14 @@ export class GDInlayHintsProvider implements InlayHintsProvider {
 		];
 		context.subscriptions.push(vscode.languages.registerInlayHintsProvider(selector, this));
 
-		globals.lsp.onStatusChanged((status) => {
+		// Fire change event on any status change
+		globals.lsp.onStatusChanged(() => {
 			this._onDidChangeInlayHints.fire();
-			if (status === ManagerStatus.CONNECTED) {
-				setTimeout(() => {
-					this._onDidChangeInlayHints.fire();
-				}, 250);
-			}
+		});
+
+		// Fire change event when LSP is fully initialized (replaces old 250ms setTimeout hack)
+		globals.lsp.onLSPReady(() => {
+			this._onDidChangeInlayHints.fire();
 		});
 	}
 

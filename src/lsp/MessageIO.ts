@@ -75,20 +75,47 @@ export class MessageIO extends EventEmitter {
 export class MessageIOReader extends AbstractMessageReader implements MessageReader {
 	callback: DataCallback;
 	private buffer = new MessageBuffer(this);
+	private listeners: { event: string; handler: (...args: any[]) => void }[] = [];
 
 	constructor(public io: MessageIO) {
 		super();
 	}
 
 	listen(callback: DataCallback): Disposable {
+		// Clean up any existing listeners first
+		this.disposeListeners();
 		this.buffer.reset();
 
 		this.callback = callback;
 
-		this.io.on("data", this.on_data.bind(this));
-		this.io.on("error", this.fireError.bind(this));
-		this.io.on("close", this.fireClose.bind(this));
-		return;
+		// Track listeners for cleanup
+		const dataHandler = this.on_data.bind(this);
+		const errorHandler = this.fireError.bind(this);
+		const closeHandler = this.fireClose.bind(this);
+
+		this.io.on("data", dataHandler);
+		this.io.on("error", errorHandler);
+		this.io.on("close", closeHandler);
+
+		this.listeners = [
+			{ event: "data", handler: dataHandler },
+			{ event: "error", handler: errorHandler },
+			{ event: "close", handler: closeHandler },
+		];
+
+		// Return proper Disposable
+		return {
+			dispose: () => {
+				this.disposeListeners();
+			},
+		};
+	}
+
+	private disposeListeners() {
+		for (const { event, handler } of this.listeners) {
+			this.io.off(event, handler);
+		}
+		this.listeners = [];
 	}
 
 	private on_data(data: Buffer | string): void {

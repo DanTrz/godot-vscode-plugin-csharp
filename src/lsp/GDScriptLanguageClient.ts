@@ -289,6 +289,8 @@ export default class GDScriptLanguageClient extends LanguageClient {
 		}
 		if (message.method === "gdscript/capabilities") {
 			globals.docsProvider.register_capabilities(message);
+			// Signal to the connection manager that LSP is fully initialized
+			globals.lsp.onCapabilitiesReceived();
 		}
 
 		// if (message.method === "textDocument/publishDiagnostics") {

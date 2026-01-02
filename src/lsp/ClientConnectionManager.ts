@@ -27,6 +27,7 @@ export enum ManagerStatus {
 	CONNECTED = 5,
 	RETRYING = 6,
 	WRONG_WORKSPACE = 7,
+	INITIALIZING_CLIENT = 8,  // After socket connect, before LSP handshake completes
 }
 
 export class ClientConnectionManager {
@@ -34,6 +35,17 @@ export class ClientConnectionManager {
 
 	private statusChanged = new EventEmitter<ManagerStatus>();
 	onStatusChanged = this.statusChanged.event;
+
+	// Lifecycle events for providers to listen to
+	private lspReady = new EventEmitter<void>();
+	onLSPReady = this.lspReady.event;
+
+	private lspDisconnected = new EventEmitter<void>();
+	onLSPDisconnected = this.lspDisconnected.event;
+
+	// Flag to track if capabilities have been received
+	private capabilitiesReceived = false;
+	private capabilitiesResolver: (() => void) | null = null;
 
 	private reconnectionAttempts = 0;
 
@@ -73,9 +85,22 @@ export class ClientConnectionManager {
 		this.connect_to_language_server();
 	}
 
-	private create_new_client() {
+	private async create_new_client() {
 		const port = this.client?.port ?? -1;
-		this.client?.events?.removeAllListeners();
+
+		// CRITICAL: Stop the old client BEFORE creating a new one
+		// This ensures vscode-languageclient properly disposes internal handlers
+		// and the new client's needsStart() returns true for proper initialization
+		if (this.client) {
+			this.client.events?.removeAllListeners();
+			try {
+				await this.client.stop();
+				log.info("Old LSP client stopped");
+			} catch (e) {
+				log.warn("Error stopping old LSP client (may already be stopped):", e);
+			}
+		}
+
 		this.client = new GDScriptLanguageClient();
 		this.client.port = port;
 		this.client.events.on("status", this.on_client_status_changed.bind(this));
@@ -272,29 +297,79 @@ export class ClientConnectionManager {
 				text = "$(x) Wrong Project";
 				tooltip = "Disconnected from the GDScript language server.";
 				break;
+			case ManagerStatus.INITIALIZING_CLIENT:
+				text = "$(sync~spin) Initializing...";
+				tooltip = `Initializing LSP connection to ${lspTarget}`;
+				if (this.connectedVersion) {
+					tooltip += `\nGodot version: ${this.connectedVersion}`;
+				}
+				break;
 		}
 		this.statusWidget.text = text;
 		this.statusWidget.tooltip = tooltip;
 	}
 
-	private on_client_status_changed(status: ClientStatus) {
+	private async on_client_status_changed(status: ClientStatus) {
 		switch (status) {
 			case ClientStatus.PENDING:
 				this.status = ManagerStatus.PENDING;
 				break;
 			case ClientStatus.CONNECTED:
-				this.retry = false;
-				this.reconnectionAttempts = 0;
-				set_context("connectedToLSP", true);
-				this.status = ManagerStatus.CONNECTED;
+				// Reset capabilities flag for new connection
+				this.capabilitiesReceived = false;
+				this.capabilitiesResolver = null;
+
+				// Show initializing status while we start the client
+				this.status = ManagerStatus.INITIALIZING_CLIENT;
+				this.statusChanged.fire(this.status);
+				this.update_status_widget();
+
 				if (this.client.needsStart()) {
-					this.client.start().then(() => log.info("LSP Client started"));
+					try {
+						// Await the client start - this does the LSP initialize handshake
+						await this.client.start();
+						log.info("LSP Client started, waiting for capabilities...");
+
+						// Wait for capabilities with 30 second timeout
+						await this.waitForCapabilities(30000);
+						log.info("LSP capabilities received");
+
+						// Now we're fully connected
+						this.retry = false;
+						this.reconnectionAttempts = 0;
+						set_context("connectedToLSP", true);
+						this.status = ManagerStatus.CONNECTED;
+						this.lspReady.fire();
+					} catch (error) {
+						log.warn(`LSP initialization issue: ${error.message}`);
+						// Still set connected but some features may be limited
+						this.retry = false;
+						this.reconnectionAttempts = 0;
+						set_context("connectedToLSP", true);
+						this.status = ManagerStatus.CONNECTED;
+						this.lspReady.fire();
+					}
+				} else {
+					// Client already started, just update status
+					this.retry = false;
+					this.reconnectionAttempts = 0;
+					set_context("connectedToLSP", true);
+					this.status = ManagerStatus.CONNECTED;
 				}
 				break;
 			case ClientStatus.DISCONNECTED:
+				// Fire disconnected event BEFORE creating new client so providers can reset
+				set_context("connectedToLSP", false);
+				this.lspDisconnected.fire();
+
 				// Disconnection is unrecoverable, since the server will not know that the reconnected client is the same.
 				// Create a new client with a clean state to prevent de-sync e.g. of client managed files.
-				this.create_new_client();
+				await this.create_new_client();
+
+				// Reset capabilities state
+				this.capabilitiesReceived = false;
+				this.capabilitiesResolver = null;
+
 				if (this.retry) {
 					if (this.client.port !== -1) {
 						this.status = ManagerStatus.INITIALIZING_LSP;
@@ -318,6 +393,44 @@ export class ClientConnectionManager {
 	}
 
 	private retry = false;
+
+	/**
+	 * Called by the documentation provider when LSP capabilities are received.
+	 * This signals that the LSP is fully initialized.
+	 */
+	public onCapabilitiesReceived() {
+		this.capabilitiesReceived = true;
+		if (this.capabilitiesResolver) {
+			this.capabilitiesResolver();
+			this.capabilitiesResolver = null;
+		}
+	}
+
+	/**
+	 * Waits for LSP capabilities to be received, with a timeout.
+	 * @param timeoutMs Timeout in milliseconds (default 30 seconds)
+	 */
+	private waitForCapabilities(timeoutMs = 30000): Promise<void> {
+		return new Promise((resolve, reject) => {
+			// If already received, resolve immediately
+			if (this.capabilitiesReceived) {
+				resolve();
+				return;
+			}
+
+			// Set up timeout
+			const timeoutId = setTimeout(() => {
+				this.capabilitiesResolver = null;
+				reject(new Error(`LSP capabilities timeout after ${timeoutMs}ms`));
+			}, timeoutMs);
+
+			// Set up resolver
+			this.capabilitiesResolver = () => {
+				clearTimeout(timeoutId);
+				resolve();
+			};
+		});
+	}
 
 	private retry_callback() {
 		if (this.retry) {
