@@ -3,6 +3,9 @@ import * as path from "node:path";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import { execSync } from "node:child_process";
+import { createLogger } from "./logger";
+
+const log = createLogger("utils.godot", { output: "Godot LSP" });
 
 export function get_editor_data_dir(): string {
 	// from: https://stackoverflow.com/a/26227660
@@ -141,6 +144,8 @@ export async function convert_uids_to_uris(uids: string[]): Promise<Map<string, 
 	const not_found_uids: string[] = [];
 	const uris: Map<string, vscode.Uri> = new Map();
 
+	log.info(`[UID] Resolving UIDs: ${uids.join(", ")}`);
+
 	let found_all = true;
 	for (const uid of uids) {
 		if (!uid.startsWith("uid://")) {
@@ -151,6 +156,7 @@ export async function convert_uids_to_uris(uids: string[]): Promise<Map<string, 
 			const uri = uidCache.get(uid);
 			if (fs.existsSync(uri.fsPath)) {
 				uris.set(uid, uri);
+				log.info(`[UID] Cache hit: ${uid} -> ${uri.fsPath}`);
 				continue;
 			}
 
@@ -165,29 +171,130 @@ export async function convert_uids_to_uris(uids: string[]): Promise<Map<string, 
 		return uris;
 	}
 
-	const files = await vscode.workspace.findFiles("**/*.uid", null);
+	log.info(`[UID] Not found in cache, searching files for: ${not_found_uids.join(", ")}`);
 
-	for (const file of files) {
-		const document = await vscode.workspace.openTextDocument(file);
-		const text = document.getText();
-		const match = text.match(/uid:\/\/([0-9a-z]*)/);
-		if (!match) {
-			continue;
+	const startTime = Date.now();
+
+	// Search .uid files (scripts, shaders, scenes, resources)
+	// Use direct fs reads instead of vscode.openTextDocument for performance
+	const uidFiles = await vscode.workspace.findFiles("**/*.uid", null);
+
+	for (const file of uidFiles) {
+		try {
+			// .uid files are tiny (<50 bytes), direct read is much faster
+			const text = fs.readFileSync(file.fsPath, "utf-8").trim();
+			const match = text.match(/uid:\/\/([0-9a-zA-Z]*)/);
+			if (!match) {
+				continue;
+			}
+
+			const file_path = file.fsPath.substring(0, file.fsPath.length - ".uid".length);
+			if (!fs.existsSync(file_path)) {
+				continue;
+			}
+
+			const file_uri = vscode.Uri.file(file_path);
+			uidCache.set(match[0], file_uri);
+
+			if (not_found_uids.includes(match[0])) {
+				uris.set(match[0], file_uri);
+				if (uris.size === not_found_uids.length) {
+					log.info(`[UID] Resolved all in ${Date.now() - startTime}ms (from .uid files)`);
+					return uris;
+				}
+			}
+		} catch {
+			// Skip files that can't be read
 		}
+	}
 
-		const found_match = not_found_uids.indexOf(match[0]) >= 0;
+	if (uris.size === not_found_uids.length) {
+		log.info(`[UID] Resolved all in ${Date.now() - startTime}ms`);
+		return uris;
+	}
 
-		const file_path = file.fsPath.substring(0, file.fsPath.length - ".uid".length);
-		if (!fs.existsSync(file_path)) {
-			continue;
+	// Search .import files (textures, audio, etc.)
+	const importFiles = await vscode.workspace.findFiles("**/*.import", null);
+
+	for (const file of importFiles) {
+		try {
+			// Read only first 1KB - UID is always in the header
+			const fd = fs.openSync(file.fsPath, "r");
+			const buffer = Buffer.alloc(1024);
+			fs.readSync(fd, buffer, 0, 1024, 0);
+			fs.closeSync(fd);
+			const text = buffer.toString("utf-8");
+
+			const match = text.match(/uid="(uid:\/\/[0-9a-zA-Z]*)"/);
+			if (!match) {
+				continue;
+			}
+
+			const uid = match[1];
+			const file_path = file.fsPath.substring(0, file.fsPath.length - ".import".length);
+			if (!fs.existsSync(file_path)) {
+				continue;
+			}
+
+			const file_uri = vscode.Uri.file(file_path);
+			uidCache.set(uid, file_uri);
+
+			if (not_found_uids.includes(uid)) {
+				uris.set(uid, file_uri);
+				if (uris.size === not_found_uids.length) {
+					log.info(`[UID] Resolved all in ${Date.now() - startTime}ms (from .import files)`);
+					return uris;
+				}
+			}
+		} catch {
+			// Skip files that can't be read
 		}
+	}
 
-		const file_uri = vscode.Uri.file(file_path);
-		uidCache.set(match[0], file_uri);
+	if (uris.size === not_found_uids.length) {
+		log.info(`[UID] Resolved all in ${Date.now() - startTime}ms`);
+		return uris;
+	}
 
-		if (found_match) {
-			uris.set(match[0], file_uri);
+	// Search .tres and .tscn files (UIDs embedded in file header)
+	const resourceFiles = await vscode.workspace.findFiles("**/*.{tres,tscn}", null);
+
+	for (const file of resourceFiles) {
+		try {
+			// Read only first 512 bytes - header with UID is at the start
+			const fd = fs.openSync(file.fsPath, "r");
+			const buffer = Buffer.alloc(512);
+			fs.readSync(fd, buffer, 0, 512, 0);
+			fs.closeSync(fd);
+			const text = buffer.toString("utf-8");
+
+			const match = text.match(/uid="(uid:\/\/[0-9a-zA-Z]*)"/);
+			if (!match) {
+				continue;
+			}
+
+			const uid = match[1];
+			const file_uri = file;
+			uidCache.set(uid, file_uri);
+
+			if (not_found_uids.includes(uid)) {
+				uris.set(uid, file_uri);
+				if (uris.size === not_found_uids.length) {
+					log.info(`[UID] Resolved all in ${Date.now() - startTime}ms (from .tres/.tscn files)`);
+					return uris;
+				}
+			}
+		} catch {
+			// Skip files that can't be read
 		}
+	}
+
+	log.info(`[UID] Search completed in ${Date.now() - startTime}ms, found ${uris.size}/${not_found_uids.length}`)
+
+	// Log unresolved UIDs
+	const unresolved = not_found_uids.filter(uid => !uris.has(uid));
+	if (unresolved.length > 0) {
+		log.warn(`[UID] Could not resolve: ${unresolved.join(", ")}`);
 	}
 
 	return uris;

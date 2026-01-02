@@ -23,7 +23,7 @@ export class MessageIO extends EventEmitter {
 	writer = new MessageIOWriter(this);
 
 	requestFilter: (msg: RequestMessage) => RequestMessage | false = (msg) => msg;
-	responseFilter: (msg: ResponseMessage) => ResponseMessage | false = (msg) => msg;
+	responseFilter: (msg: ResponseMessage) => Promise<ResponseMessage | false> | ResponseMessage | false = (msg) => msg;
 	notificationFilter: (msg: NotificationMessage) => NotificationMessage | false = (msg) => msg;
 
 	socket: Socket = null;
@@ -53,11 +53,17 @@ export class MessageIO extends EventEmitter {
 			});
 			// socket.on("end", this.on_disconnected.bind(this));
 			socket.on("error", () => {
-				this.socket = null;
+				if (this.socket) {
+					this.socket.destroy();
+					this.socket = null;
+				}
 				this.emit("disconnected");
 			});
 			socket.on("close", () => {
-				this.socket = null;
+				if (this.socket) {
+					this.socket.destroy();
+					this.socket = null;
+				}
 				this.emit("disconnected");
 			});
 		});
@@ -120,6 +126,10 @@ export class MessageIOReader extends AbstractMessageReader implements MessageRea
 
 	private on_data(data: Buffer | string): void {
 		this.buffer.append(data);
+		this.processMessages();
+	}
+
+	private async processMessages(): Promise<void> {
 		while (true) {
 			const msg = this.buffer.ready();
 			if (!msg) {
@@ -129,7 +139,7 @@ export class MessageIOReader extends AbstractMessageReader implements MessageRea
 			// allow message to be modified
 			let modified: ResponseMessage | NotificationMessage | false;
 			if ("id" in json) {
-				modified = this.io.responseFilter(json);
+				modified = await this.io.responseFilter(json);
 			} else if ("method" in json) {
 				modified = this.io.notificationFilter(json);
 			} else {

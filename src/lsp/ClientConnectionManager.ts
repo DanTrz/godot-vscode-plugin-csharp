@@ -54,11 +54,12 @@ export class ClientConnectionManager {
 	private statusWidget: vscode.StatusBarItem = null;
 
 	private connectedVersion = "";
+	private retryIntervalId: ReturnType<typeof setInterval> | null = null;
 
 	constructor(private context: vscode.ExtensionContext) {
 		this.create_new_client();
 
-		setInterval(() => {
+		this.retryIntervalId = setInterval(() => {
 			this.retry_callback();
 		}, get_configuration("lsp.autoReconnect.cooldown"));
 
@@ -80,6 +81,13 @@ export class ClientConnectionManager {
 			register_command("stopLanguageServer", this.stop_language_server.bind(this)),
 			register_command("checkStatus", this.on_status_item_click.bind(this)),
 			this.statusWidget,
+			// Clean up interval on extension deactivation
+			{ dispose: () => {
+				if (this.retryIntervalId) {
+					clearInterval(this.retryIntervalId);
+					this.retryIntervalId = null;
+				}
+			}},
 		);
 
 		this.connect_to_language_server();

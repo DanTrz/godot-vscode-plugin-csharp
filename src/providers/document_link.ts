@@ -9,7 +9,7 @@ import {
 	type ExtensionContext,
 } from "vscode";
 import { SceneParser } from "../scene_tools";
-import { convert_resource_path_to_uri, convert_uids_to_uris, createLogger } from "../utils";
+import { convert_resource_path_to_uri, convert_uids_to_uris, convert_uri_to_resource_path, createLogger } from "../utils";
 
 const log = createLogger("providers.document_links");
 
@@ -21,6 +21,7 @@ export class GDDocumentLinkProvider implements DocumentLinkProvider {
 			{ language: "gdresource", scheme: "file" },
 			{ language: "gdscene", scheme: "file" },
 			{ language: "gdscript", scheme: "file" },
+			{ language: "csharp", scheme: "file" },
 		];
 		context.subscriptions.push(
 			vscode.languages.registerDocumentLinkProvider(selector, this),
@@ -72,7 +73,7 @@ export class GDDocumentLinkProvider implements DocumentLinkProvider {
 
 		const uids: Set<string> = new Set();
 		const uid_matches: Array<[string, Range]> = [];
-		for (const match of text.matchAll(/uid:\/\/([0-9a-z]*)/g)) {
+		for (const match of text.matchAll(/uid:\/\/([0-9a-zA-Z]*)/g)) {
 			const r = this.create_range(document, match);
 			uids.add(match[0]);
 			uid_matches.push([match[0], r]);
@@ -82,7 +83,11 @@ export class GDDocumentLinkProvider implements DocumentLinkProvider {
 		for (const uid of uid_matches) {
 			const uri = uid_map.get(uid[0]);
 			if (uri instanceof vscode.Uri) {
-				links.push(new DocumentLink(uid[1], uri));
+				const link = new DocumentLink(uid[1], uri);
+				// Show the resolved file path in the tooltip
+				const resourcePath = await convert_uri_to_resource_path(uri);
+				link.tooltip = `${resourcePath ?? "Unknown"} (${uid[0]})`;
+				links.push(link);
 			}
 		}
 
