@@ -31,9 +31,25 @@ export class MessageIO extends EventEmitter {
 
 	async connect(host: string, port: number): Promise<void> {
 		log.debug(`connecting to ${host}:${port}`);
-		return new Promise((resolve, reject) => {
-			this.socket = null;
 
+		// Clean up existing socket before creating new one
+		// This prevents socket leaks and ensures clean state on reconnection
+		if (this.socket) {
+			log.debug("Cleaning up existing socket before reconnect");
+			this.socket.removeAllListeners();
+			this.socket.destroy();
+			this.socket = null;
+		}
+
+		// Clear stale cached messages from previous failed connection attempts
+		// These messages were intended for the old connection and should not be
+		// sent to a fresh LSP server, as they may cause confusion or slowdowns
+		if (this.messageCache.length > 0) {
+			log.debug(`Clearing ${this.messageCache.length} stale cached messages`);
+			this.messageCache = [];
+		}
+
+		return new Promise((resolve, reject) => {
 			const socket = new Socket();
 			socket.connect(port, host);
 
@@ -53,15 +69,21 @@ export class MessageIO extends EventEmitter {
 			});
 			// socket.on("end", this.on_disconnected.bind(this));
 			socket.on("error", () => {
-				if (this.socket) {
-					this.socket.destroy();
+				// CRITICAL FIX: Destroy the LOCAL socket object, not this.socket
+				// Previously, on connection error, this.socket was null (connect callback hadn't run)
+				// so the new socket was never destroyed, causing socket leaks during retry cycles
+				socket.removeAllListeners();
+				socket.destroy();
+				if (this.socket === socket) {
 					this.socket = null;
 				}
 				this.emit("disconnected");
 			});
 			socket.on("close", () => {
-				if (this.socket) {
-					this.socket.destroy();
+				// CRITICAL FIX: Same as error handler - destroy the LOCAL socket
+				socket.removeAllListeners();
+				socket.destroy();
+				if (this.socket === socket) {
 					this.socket = null;
 				}
 				this.emit("disconnected");
@@ -117,7 +139,7 @@ export class MessageIOReader extends AbstractMessageReader implements MessageRea
 		};
 	}
 
-	private disposeListeners() {
+	public disposeListeners() {
 		for (const { event, handler } of this.listeners) {
 			this.io.off(event, handler);
 		}

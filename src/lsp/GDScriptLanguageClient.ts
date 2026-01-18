@@ -93,12 +93,16 @@ export default class GDScriptLanguageClient extends LanguageClient {
 
 	public port = -1;
 	public lastPortTried = -1;
-	public sentMessages = new Map();
+	public sentMessages = new Map<string | number, any>();
 	private rejected = false;
 
 	events = new EventEmitter();
 
 	private _status: ClientStatus;
+
+	// Track bound handlers so we can remove them on dispose
+	private boundOnConnected: () => void;
+	private boundOnDisconnected: () => void;
 
 	public set status(v: ClientStatus) {
 		this._status = v;
@@ -121,14 +125,54 @@ export default class GDScriptLanguageClient extends LanguageClient {
 
 		super("GDScriptLanguageClient", serverOptions, clientOptions);
 		this.status = ClientStatus.PENDING;
-		this.io.on("connected", this.on_connected.bind(this));
-		this.io.on("disconnected", this.on_disconnected.bind(this));
+
+		// Store bound handlers so we can remove them later
+		this.boundOnConnected = this.on_connected.bind(this);
+		this.boundOnDisconnected = this.on_disconnected.bind(this);
+
+		this.io.on("connected", this.boundOnConnected);
+		this.io.on("disconnected", this.boundOnDisconnected);
 		this.io.requestFilter = this.request_filter.bind(this);
 		this.io.responseFilter = this.response_filter.bind(this);
 		this.io.notificationFilter = this.notification_filter.bind(this);
 	}
 
-	connect(target: TargetLSP = TargetLSP.EDITOR) {
+	/**
+	 * Clean up all internal state before disposal.
+	 * This MUST be called before creating a new client to prevent
+	 * listener accumulation and stale state issues.
+	 */
+	public disposeClient(): void {
+		// Clear stale sent messages that never got responses
+		this.sentMessages.clear();
+
+		// Remove our listeners from MessageIO
+		this.io.off("connected", this.boundOnConnected);
+		this.io.off("disconnected", this.boundOnDisconnected);
+
+		// Clear filters
+		this.io.requestFilter = (msg) => msg;
+		this.io.responseFilter = (msg) => msg;
+		this.io.notificationFilter = (msg) => msg;
+
+		// Clean up MessageIO's reader listeners
+		this.io.reader.disposeListeners();
+
+		// Destroy socket if still connected
+		if (this.io.socket) {
+			this.io.socket.removeAllListeners();
+			this.io.socket.destroy();
+			this.io.socket = null;
+		}
+
+		// Clear message cache
+		this.io.messageCache = [];
+
+		// Remove all listeners from our events emitter
+		this.events.removeAllListeners();
+	}
+
+	connect(target: TargetLSP = TargetLSP.EDITOR, tryAlternatePort = false) {
 		this.rejected = false;
 		this.target = target;
 		this.status = ClientStatus.PENDING;
@@ -140,7 +184,15 @@ export default class GDScriptLanguageClient extends LanguageClient {
 
 		if (this.target === TargetLSP.EDITOR) {
 			if (port === 6005 || port === 6008) {
-				port = 6005;
+				// Alternate between 6005 and 6008 for Godot 4.x compatibility
+				// Godot 4.0-4.2 uses 6005, Godot 4.3+ uses 6008
+				if (tryAlternatePort && this.lastPortTried === 6005) {
+					port = 6008;
+				} else if (tryAlternatePort && this.lastPortTried === 6008) {
+					port = 6005;
+				} else {
+					port = 6005; // Start with 6005
+				}
 			}
 		}
 
@@ -199,7 +251,17 @@ export default class GDScriptLanguageClient extends LanguageClient {
 			}
 			return false;
 		}
-		this.sentMessages.set(message.id, message);
+
+		// Store message with timestamp for performance tracking
+		this.sentMessages.set(message.id, {
+			...message,
+			timestamp: Date.now(),
+		});
+
+		// Log document sync operations for debugging connection performance issues
+		if (message.method?.startsWith("textDocument/did")) {
+			log.debug(`TX document sync: ${message.method}`);
+		}
 
 		// discard outgoing messages that we know aren't supported
 		// if (message.method === "textDocument/didSave") {
@@ -223,6 +285,16 @@ export default class GDScriptLanguageClient extends LanguageClient {
 		const sentMessage = this.sentMessages.get(message.id);
 		// Clean up processed request to prevent memory leak
 		this.sentMessages.delete(message.id);
+
+		// Log slow LSP operations for debugging performance issues
+		if (sentMessage?.timestamp) {
+			const elapsed = Date.now() - sentMessage.timestamp;
+			const method = sentMessage.method || "unknown";
+
+			if (elapsed > 1000) {
+				log.warn(`Slow LSP response: ${method} took ${elapsed}ms`);
+			}
+		}
 
 		if (sentMessage?.method === "textDocument/hover") {
 			// fix markdown contents
@@ -365,21 +437,8 @@ export default class GDScriptLanguageClient extends LanguageClient {
 			this.status = ClientStatus.REJECTED;
 			return;
 		}
-		if (this.target === TargetLSP.EDITOR) {
-			const host = get_configuration("lsp.serverHost");
-			let port = get_configuration("lsp.serverPort");
-
-			if (port === 6005 || port === 6008) {
-				if (this.lastPortTried === 6005) {
-					port = 6008;
-					log.info(`attempting to connect to LSP at ${host}:${port}`);
-
-					this.lastPortTried = port;
-					this.io.connect(host, port);
-					return;
-				}
-			}
-		}
+		// NOTE: Port fallback (6005 -> 6008) is now handled by ClientConnectionManager
+		// to avoid duplicate connection attempts when both the client and manager try to reconnect
 		this.status = ClientStatus.DISCONNECTED;
 	}
 }

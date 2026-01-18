@@ -96,16 +96,23 @@ export class ClientConnectionManager {
 	private async create_new_client() {
 		const port = this.client?.port ?? -1;
 
-		// CRITICAL: Stop the old client BEFORE creating a new one
+		// CRITICAL: Clean up the old client BEFORE creating a new one
 		// This ensures vscode-languageclient properly disposes internal handlers
 		// and the new client's needsStart() returns true for proper initialization
 		if (this.client) {
-			this.client.events?.removeAllListeners();
+			// First, clean up all internal state (sentMessages, io handlers, filters, socket)
+			// This prevents listener accumulation and stale state that causes slow performance
+			this.client.disposeClient();
+
+			// Use dispose() instead of stop() - dispose() properly marks the client
+			// as disposed and prevents any lingering state from affecting new clients
+			// dispose() internally calls stop() but also sets _disposed flag
 			try {
-				await this.client.stop();
-				log.info("Old LSP client stopped");
+				await this.client.dispose();
+				log.info("Old LSP client disposed");
 			} catch (e) {
-				log.warn("Error stopping old LSP client (may already be stopped):", e);
+				// Log error but continue - the client might be in a bad state
+				log.warn("Error disposing old LSP client (may be in unexpected state):", e);
 			}
 		}
 
@@ -451,7 +458,9 @@ export class ClientConnectionManager {
 		const maxAttempts = get_configuration("lsp.autoReconnect.attempts");
 		if (autoRetry && this.reconnectionAttempts <= maxAttempts - 1) {
 			this.reconnectionAttempts++;
-			this.client.connect(this.target);
+			// Alternate ports on each retry attempt (6005 <-> 6008) for Godot version compatibility
+			const tryAlternatePort = this.reconnectionAttempts % 2 === 0;
+			this.client.connect(this.target, tryAlternatePort);
 			this.retry = true;
 			return;
 		}

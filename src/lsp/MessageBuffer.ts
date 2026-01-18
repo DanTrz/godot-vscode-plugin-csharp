@@ -126,7 +126,11 @@ export default class MessageBuffer {
 	public reset() {
 		this.nextMessageLength = -1;
 		this.messageToken = 0;
-		this.partialMessageTimer = undefined;
+		// Clear any pending partial message timer
+		this.clearPartialMessageTimer();
+		// Reset buffer to prevent stale data from previous connection
+		this.index = 0;
+		this.buffer = Buffer.allocUnsafe(DefaultSize);
 	}
 
 	private clearPartialMessageTimer(): void {
