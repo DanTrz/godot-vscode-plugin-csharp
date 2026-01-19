@@ -54,14 +54,20 @@ export class ClientConnectionManager {
 	private statusWidget: vscode.StatusBarItem = null;
 
 	private connectedVersion = "";
-	private retryIntervalId: ReturnType<typeof setInterval> | null = null;
+	private retryTimeoutId: ReturnType<typeof setTimeout> | null = null;
+	private isRetrying = false;
+
+	// Exponential backoff configuration
+	private static readonly BASE_RETRY_DELAY = 1000; // Start with 1 second
+	private static readonly MAX_RETRY_DELAY = 30000; // Cap at 30 seconds
+	private static readonly BACKOFF_MULTIPLIER = 1.5; // Multiply delay by 1.5 each attempt
+	private static readonly JITTER_FACTOR = 0.3; // Add ±30% random jitter
 
 	constructor(private context: vscode.ExtensionContext) {
 		this.create_new_client();
 
-		this.retryIntervalId = setInterval(() => {
-			this.retry_callback();
-		}, get_configuration("lsp.autoReconnect.cooldown"));
+		// Note: Retry is now event-driven, not interval-based
+		// Retries are scheduled when disconnection occurs
 
 		set_context("connectedToLSP", false);
 
@@ -81,12 +87,9 @@ export class ClientConnectionManager {
 			register_command("stopLanguageServer", this.stop_language_server.bind(this)),
 			register_command("checkStatus", this.on_status_item_click.bind(this)),
 			this.statusWidget,
-			// Clean up interval on extension deactivation
+			// Clean up timeout on extension deactivation
 			{ dispose: () => {
-				if (this.retryIntervalId) {
-					clearInterval(this.retryIntervalId);
-					this.retryIntervalId = null;
-				}
+				this.cancelRetry();
 			}},
 		);
 
@@ -385,16 +388,16 @@ export class ClientConnectionManager {
 				this.capabilitiesReceived = false;
 				this.capabilitiesResolver = null;
 
-				if (this.retry) {
-					if (this.client.port !== -1) {
-						this.status = ManagerStatus.INITIALIZING_LSP;
-					} else {
-						this.status = ManagerStatus.RETRYING;
-					}
+				// Always attempt to reconnect on disconnect, unless explicitly disabled
+				// (retry flag is set to false only for: wrong workspace, max attempts reached, or user cancelled)
+				// This ensures we auto-reconnect when Godot reloads
+				if (this.client.port !== -1) {
+					this.status = ManagerStatus.INITIALIZING_LSP;
 				} else {
-					this.status = ManagerStatus.DISCONNECTED;
+					this.status = ManagerStatus.RETRYING;
 				}
-				this.retry = true;
+				// Schedule retry with exponential backoff (event-driven, not interval)
+				this.scheduleRetry();
 				break;
 			case ClientStatus.REJECTED:
 				this.status = ManagerStatus.WRONG_WORKSPACE;
@@ -447,29 +450,83 @@ export class ClientConnectionManager {
 		});
 	}
 
-	private retry_callback() {
-		if (this.retry) {
-			this.retry_connect_client();
+	/**
+	 * Cancel any pending retry timeout
+	 */
+	private cancelRetry() {
+		if (this.retryTimeoutId) {
+			clearTimeout(this.retryTimeoutId);
+			this.retryTimeoutId = null;
 		}
+		this.isRetrying = false;
+	}
+
+	/**
+	 * Calculate delay for next retry using exponential backoff with jitter
+	 */
+	private getRetryDelay(): number {
+		// Exponential backoff: base * multiplier^attempts
+		let delay = ClientConnectionManager.BASE_RETRY_DELAY *
+			Math.pow(ClientConnectionManager.BACKOFF_MULTIPLIER, this.reconnectionAttempts);
+
+		// Cap at maximum delay
+		delay = Math.min(delay, ClientConnectionManager.MAX_RETRY_DELAY);
+
+		// Add jitter (±30%) to prevent thundering herd
+		const jitter = delay * ClientConnectionManager.JITTER_FACTOR * (Math.random() * 2 - 1);
+		delay = Math.round(delay + jitter);
+
+		return delay;
+	}
+
+	/**
+	 * Schedule a retry with exponential backoff
+	 */
+	private scheduleRetry() {
+		// Prevent multiple concurrent retries
+		if (this.isRetrying) {
+			log.debug("Retry already scheduled, skipping");
+			return;
+		}
+
+		const autoRetry = get_configuration("lsp.autoReconnect.enabled");
+		const maxAttempts = get_configuration("lsp.autoReconnect.attempts");
+
+		if (!autoRetry || this.reconnectionAttempts >= maxAttempts) {
+			this.retry = false;
+			this.status = ManagerStatus.DISCONNECTED;
+			this.update_status_widget();
+			this.show_retrying_prompt();
+			return;
+		}
+
+		const delay = this.getRetryDelay();
+		log.info(`Scheduling retry ${this.reconnectionAttempts + 1}/${maxAttempts} in ${delay}ms`);
+
+		this.isRetrying = true;
+		this.retryTimeoutId = setTimeout(() => {
+			this.isRetrying = false;
+			this.retry_connect_client();
+		}, delay);
 	}
 
 	private retry_connect_client() {
 		const autoRetry = get_configuration("lsp.autoReconnect.enabled");
 		const maxAttempts = get_configuration("lsp.autoReconnect.attempts");
-		if (autoRetry && this.reconnectionAttempts <= maxAttempts - 1) {
-			this.reconnectionAttempts++;
-			// Alternate ports on each retry attempt (6005 <-> 6008) for Godot version compatibility
-			const tryAlternatePort = this.reconnectionAttempts % 2 === 0;
-			this.client.connect(this.target, tryAlternatePort);
-			this.retry = true;
+
+		if (!autoRetry || this.reconnectionAttempts >= maxAttempts) {
+			this.retry = false;
+			this.status = ManagerStatus.DISCONNECTED;
+			this.update_status_widget();
+			this.show_retrying_prompt();
 			return;
 		}
 
-		this.retry = false;
-		this.status = ManagerStatus.DISCONNECTED;
-		this.update_status_widget();
-
-		this.show_retrying_prompt();
+		this.reconnectionAttempts++;
+		// Alternate ports on each retry attempt (6005 <-> 6008) for Godot version compatibility
+		const tryAlternatePort = this.reconnectionAttempts % 2 === 0;
+		this.client.connect(this.target, tryAlternatePort);
+		this.retry = true;
 	}
 
 	private show_retrying_prompt() {

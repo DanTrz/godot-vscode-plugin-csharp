@@ -14,6 +14,11 @@ import { convert_resource_path_to_uri, createLogger, convert_uid_to_uri, convert
 
 const log = createLogger("providers.hover");
 
+// Maximum lines to show in hover preview to prevent UI freeze on large files
+const MAX_PREVIEW_LINES = 50;
+// Maximum characters per line in preview
+const MAX_LINE_LENGTH = 200;
+
 export class GDHoverProvider implements HoverProvider {
 	public parser = new SceneParser();
 
@@ -46,9 +51,47 @@ export class GDHoverProvider implements HoverProvider {
 		return links;
 	}
 
+	/**
+	 * Truncate text for preview to prevent UI freeze on large files
+	 */
+	private truncateForPreview(text: string, languageId: string): string {
+		const lines = text.split("\n");
+		let truncated = false;
+
+		// Limit line count
+		let previewLines = lines.slice(0, MAX_PREVIEW_LINES);
+		if (lines.length > MAX_PREVIEW_LINES) {
+			truncated = true;
+		}
+
+		// Limit line length
+		previewLines = previewLines.map(line => {
+			if (line.length > MAX_LINE_LENGTH) {
+				return line.substring(0, MAX_LINE_LENGTH) + "...";
+			}
+			return line;
+		});
+
+		let result = previewLines.join("\n");
+		if (truncated) {
+			result += `\n\n... (${lines.length - MAX_PREVIEW_LINES} more lines)`;
+		}
+		return result;
+	}
+
 	async provideHover(document: TextDocument, position: Position, token: CancellationToken): Promise<Hover> {
+		// Check cancellation early
+		if (token.isCancellationRequested) {
+			return null;
+		}
+
 		if (["gdresource", "gdscene"].includes(document.languageId)) {
 			const scene = this.parser.parse_scene(document);
+
+			// Check cancellation after potentially expensive parse
+			if (token.isCancellationRequested) {
+				return null;
+			}
 
 			const wordPattern = /(?:Ext|Sub)Resource\(\s?"?(\w+)\s?"?\)/;
 			const word = document.getText(document.getWordRangeAtPosition(position, wordPattern));
@@ -59,6 +102,11 @@ export class GDHoverProvider implements HoverProvider {
 				const resource = scene.externalResources.get(id);
 				const definition = resource.body;
 				const links = await this.get_links(definition);
+
+				// Check cancellation after async operation
+				if (token.isCancellationRequested) {
+					return null;
+				}
 
 				const contents = new MarkdownString();
 				contents.appendMarkdown(links);
@@ -72,8 +120,13 @@ export class GDHoverProvider implements HoverProvider {
 					contents.isTrusted = true;
 				}
 				if (resource.type === "Script") {
+					// Check cancellation before loading file
+					if (token.isCancellationRequested) {
+						return null;
+					}
 					contents.appendMarkdown("\n---\n");
-					const text = (await vscode.workspace.openTextDocument(uri)).getText();
+					const doc = await vscode.workspace.openTextDocument(uri);
+					const text = this.truncateForPreview(doc.getText(), "gdscript");
 					contents.appendCodeblock(text, "gdscript");
 				}
 				const hover = new Hover(contents);
@@ -95,6 +148,11 @@ export class GDHoverProvider implements HoverProvider {
 			}
 		}
 
+		// Check cancellation before regex operations
+		if (token.isCancellationRequested) {
+			return null;
+		}
+
 		let link = document.getText(document.getWordRangeAtPosition(position, /res:\/\/[^"^']*/));
 		let originalUid = "";
 		if (!link.startsWith("res://")) {
@@ -102,6 +160,12 @@ export class GDHoverProvider implements HoverProvider {
 			if (link.startsWith("uid://")) {
 				originalUid = link;
 				const uri = await convert_uid_to_uri(link);
+
+				// Check cancellation after async UID resolution
+				if (token.isCancellationRequested) {
+					return null;
+				}
+
 				link = await convert_uri_to_resource_path(uri);
 			}
 		}
@@ -122,6 +186,11 @@ export class GDHoverProvider implements HoverProvider {
 				return;
 			}
 
+			// Check cancellation before loading file
+			if (token.isCancellationRequested) {
+				return null;
+			}
+
 			const uri = await convert_resource_path_to_uri(link);
 			const contents = new MarkdownString();
 
@@ -135,7 +204,14 @@ export class GDHoverProvider implements HoverProvider {
 				contents.supportHtml = true;
 				contents.isTrusted = true;
 			} else {
-				const text = (await vscode.workspace.openTextDocument(uri)).getText();
+				const doc = await vscode.workspace.openTextDocument(uri);
+
+				// Check cancellation after loading document
+				if (token.isCancellationRequested) {
+					return null;
+				}
+
+				const text = this.truncateForPreview(doc.getText(), type);
 				contents.appendCodeblock(text, type);
 			}
 			const hover = new Hover(contents);

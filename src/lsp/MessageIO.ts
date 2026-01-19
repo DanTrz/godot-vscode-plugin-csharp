@@ -28,6 +28,14 @@ export class MessageIO extends EventEmitter {
 
 	socket: Socket = null;
 	messageCache: string[] = [];
+	private draining = false;
+
+	// Connection timeout in milliseconds (10 seconds - allows time for Godot to reload)
+	private static readonly CONNECTION_TIMEOUT = 10000;
+	// Keepalive interval in milliseconds (30 seconds)
+	private static readonly KEEPALIVE_INTERVAL = 30000;
+	// Maximum cached messages to prevent memory bloat
+	private static readonly MAX_MESSAGE_CACHE = 100;
 
 	async connect(host: string, port: number): Promise<void> {
 		log.debug(`connecting to ${host}:${port}`);
@@ -51,10 +59,27 @@ export class MessageIO extends EventEmitter {
 
 		return new Promise((resolve, reject) => {
 			const socket = new Socket();
+
+			// Set connection timeout - prevents hanging indefinitely if LSP is unresponsive
+			const connectionTimeout = setTimeout(() => {
+				log.warn(`Connection timeout after ${MessageIO.CONNECTION_TIMEOUT}ms`);
+				socket.removeAllListeners();
+				socket.destroy();
+				reject(new Error(`Connection timeout after ${MessageIO.CONNECTION_TIMEOUT}ms`));
+			}, MessageIO.CONNECTION_TIMEOUT);
+
 			socket.connect(port, host);
 
 			socket.on("connect", () => {
+				clearTimeout(connectionTimeout);
 				this.socket = socket;
+
+				// Enable TCP keepalive to detect half-open connections
+				// This allows detection of silent Godot crashes
+				socket.setKeepAlive(true, MessageIO.KEEPALIVE_INTERVAL);
+
+				// Set socket timeout for read/write operations
+				socket.setTimeout(MessageIO.CONNECTION_TIMEOUT * 6); // 30 seconds for ongoing operations
 
 				while (this.messageCache.length > 0) {
 					const msg = this.messageCache.shift();
@@ -64,11 +89,24 @@ export class MessageIO extends EventEmitter {
 				this.emit("connected");
 				resolve();
 			});
+
+			socket.on("timeout", () => {
+				log.warn("Socket timeout - connection may be stalled");
+				// Don't destroy on timeout, just log it - keepalive will handle dead connections
+			});
+
 			socket.on("data", (chunk: Buffer) => {
 				this.emit("data", chunk);
 			});
-			// socket.on("end", this.on_disconnected.bind(this));
-			socket.on("error", () => {
+
+			// Handle backpressure - resume when socket drains
+			socket.on("drain", () => {
+				this.draining = false;
+			});
+
+			socket.on("error", (err) => {
+				clearTimeout(connectionTimeout);
+				log.warn(`Socket error: ${err.message}`);
 				// CRITICAL FIX: Destroy the LOCAL socket object, not this.socket
 				// Previously, on connection error, this.socket was null (connect callback hadn't run)
 				// so the new socket was never destroyed, causing socket leaks during retry cycles
@@ -78,8 +116,11 @@ export class MessageIO extends EventEmitter {
 					this.socket = null;
 				}
 				this.emit("disconnected");
+				reject(err);
 			});
-			socket.on("close", () => {
+
+			socket.on("close", (hadError) => {
+				clearTimeout(connectionTimeout);
 				// CRITICAL FIX: Same as error handler - destroy the LOCAL socket
 				socket.removeAllListeners();
 				socket.destroy();
@@ -87,15 +128,39 @@ export class MessageIO extends EventEmitter {
 					this.socket = null;
 				}
 				this.emit("disconnected");
+				// Only reject if we never connected (resolve wasn't called)
+				if (!this.socket) {
+					reject(new Error("Connection closed before established"));
+				}
 			});
 		});
 	}
 
 	write(message: string) {
 		if (this.socket) {
-			this.socket.write(message);
+			// Check for backpressure - if socket buffer is full, wait for drain
+			if (this.draining) {
+				// Still draining from previous write, queue the message
+				if (this.messageCache.length < MessageIO.MAX_MESSAGE_CACHE) {
+					this.messageCache.push(message);
+				} else {
+					log.warn("Message cache full, dropping message to prevent memory bloat");
+				}
+				return;
+			}
+
+			const canContinue = this.socket.write(message);
+			if (!canContinue) {
+				// Socket buffer is full, mark as draining
+				this.draining = true;
+			}
 		} else {
-			this.messageCache.push(message);
+			// Not connected, cache message (with limit)
+			if (this.messageCache.length < MessageIO.MAX_MESSAGE_CACHE) {
+				this.messageCache.push(message);
+			} else {
+				log.warn("Message cache full while disconnected, dropping message");
+			}
 		}
 	}
 }

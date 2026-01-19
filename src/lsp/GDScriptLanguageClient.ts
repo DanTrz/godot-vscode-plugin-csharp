@@ -172,7 +172,7 @@ export default class GDScriptLanguageClient extends LanguageClient {
 		this.events.removeAllListeners();
 	}
 
-	connect(target: TargetLSP = TargetLSP.EDITOR, tryAlternatePort = false) {
+	async connect(target: TargetLSP = TargetLSP.EDITOR, tryAlternatePort = false) {
 		this.rejected = false;
 		this.target = target;
 		this.status = ClientStatus.PENDING;
@@ -201,7 +201,13 @@ export default class GDScriptLanguageClient extends LanguageClient {
 		const host = get_configuration("lsp.serverHost");
 		log.info(`attempting to connect to LSP at ${host}:${port}`);
 
-		this.io.connect(host, port);
+		try {
+			await this.io.connect(host, port);
+		} catch (err) {
+			// Connection failed (timeout, refused, etc.) - emit disconnected for retry
+			log.debug(`Connection failed: ${err.message}`);
+			// Status will be set by on_disconnected handler which fires from io.connect failure
+		}
 	}
 
 	async send_request<R>(method: string, params): Promise<R> {
@@ -327,20 +333,34 @@ export default class GDScriptLanguageClient extends LanguageClient {
 				return message;
 			}
 
-			// Resolve uid:// links to actual file paths and add tooltips
+			// Collect all UIDs that need resolution
+			const uidsToResolve: string[] = [];
 			for (const result of results) {
 				if (result.target.startsWith("uid://")) {
-					try {
-						const fileUri = await convert_uid_to_uri(result.target);
-						if (fileUri) {
-							// Get res:// path for tooltip
-							const resourcePath = await convert_uri_to_resource_path(fileUri);
-							result.target = fileUri.toString();
-							result.tooltip = resourcePath || result.target;
+					uidsToResolve.push(result.target);
+				}
+			}
+
+			// Batch resolve UIDs (uses caching internally)
+			if (uidsToResolve.length > 0) {
+				try {
+					const { convert_uids_to_uris } = await import("../utils/index.js");
+					const resolvedUris = await convert_uids_to_uris(uidsToResolve);
+
+					// Apply resolved URIs to results
+					for (const result of results) {
+						if (result.target.startsWith("uid://")) {
+							const fileUri = resolvedUris.get(result.target);
+							if (fileUri) {
+								// Get res:// path for tooltip
+								const resourcePath = await convert_uri_to_resource_path(fileUri);
+								result.target = fileUri.toString();
+								result.tooltip = resourcePath || result.target;
+							}
 						}
-					} catch (e) {
-						log.warn("Failed to resolve UID:", result.target, e);
 					}
+				} catch (e) {
+					log.warn("Failed to resolve UIDs:", e);
 				}
 			}
 		}

@@ -140,6 +140,17 @@ export async function convert_uri_to_resource_path(uri: vscode.Uri): Promise<str
 
 const uidCache: Map<string, vscode.Uri | null> = new Map();
 
+// Helper to read file header asynchronously
+async function readFileHeaderAsync(filePath: string, bytes: number): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const stream = fs.createReadStream(filePath, { start: 0, end: bytes - 1, encoding: "utf-8" });
+		let data = "";
+		stream.on("data", (chunk) => { data += chunk; });
+		stream.on("end", () => { stream.close(); resolve(data); });
+		stream.on("error", (err) => { stream.close(); reject(err); });
+	});
+}
+
 export async function convert_uids_to_uris(uids: string[]): Promise<Map<string, vscode.Uri>> {
 	const not_found_uids: string[] = [];
 	const uris: Map<string, vscode.Uri> = new Map();
@@ -154,13 +165,15 @@ export async function convert_uids_to_uris(uids: string[]): Promise<Map<string, 
 
 		if (uidCache.has(uid)) {
 			const uri = uidCache.get(uid);
-			if (fs.existsSync(uri.fsPath)) {
+			// Use async exists check
+			try {
+				await fs.promises.access(uri.fsPath, fs.constants.F_OK);
 				uris.set(uid, uri);
 				log.info(`[UID] Cache hit: ${uid} -> ${uri.fsPath}`);
 				continue;
+			} catch {
+				uidCache.delete(uid);
 			}
-
-			uidCache.delete(uid);
 		}
 
 		found_all = false;
@@ -175,121 +188,87 @@ export async function convert_uids_to_uris(uids: string[]): Promise<Map<string, 
 
 	const startTime = Date.now();
 
-	// Search .uid files (scripts, shaders, scenes, resources)
-	// Use direct fs reads instead of vscode.openTextDocument for performance
-	const uidFiles = await vscode.workspace.findFiles("**/*.uid", null);
+	// Run all three file searches in PARALLEL for much faster resolution
+	const [uidFiles, importFiles, resourceFiles] = await Promise.all([
+		vscode.workspace.findFiles("**/*.uid", null, 1000), // Limit to 1000 files
+		vscode.workspace.findFiles("**/*.import", null, 1000),
+		vscode.workspace.findFiles("**/*.{tres,tscn}", null, 1000),
+	]);
 
-	for (const file of uidFiles) {
+	log.info(`[UID] Found ${uidFiles.length} .uid, ${importFiles.length} .import, ${resourceFiles.length} resource files`);
+
+	// Process .uid files (small files, can read fully)
+	const uidPromises = uidFiles.map(async (file) => {
 		try {
-			// .uid files are tiny (<50 bytes), direct read is much faster
-			const text = fs.readFileSync(file.fsPath, "utf-8").trim();
-			const match = text.match(/uid:\/\/([0-9a-zA-Z]*)/);
-			if (!match) {
-				continue;
-			}
+			const text = await fs.promises.readFile(file.fsPath, "utf-8");
+			const match = text.trim().match(/uid:\/\/([0-9a-zA-Z]*)/);
+			if (!match) return null;
 
 			const file_path = file.fsPath.substring(0, file.fsPath.length - ".uid".length);
-			if (!fs.existsSync(file_path)) {
-				continue;
+			try {
+				await fs.promises.access(file_path, fs.constants.F_OK);
+			} catch {
+				return null;
 			}
 
-			const file_uri = vscode.Uri.file(file_path);
-			uidCache.set(match[0], file_uri);
-
-			if (not_found_uids.includes(match[0])) {
-				uris.set(match[0], file_uri);
-				if (uris.size === not_found_uids.length) {
-					log.info(`[UID] Resolved all in ${Date.now() - startTime}ms (from .uid files)`);
-					return uris;
-				}
-			}
+			return { uid: match[0], uri: vscode.Uri.file(file_path) };
 		} catch {
-			// Skip files that can't be read
+			return null;
 		}
-	}
+	});
 
-	if (uris.size === not_found_uids.length) {
-		log.info(`[UID] Resolved all in ${Date.now() - startTime}ms`);
-		return uris;
-	}
-
-	// Search .import files (textures, audio, etc.)
-	const importFiles = await vscode.workspace.findFiles("**/*.import", null);
-
-	for (const file of importFiles) {
+	// Process .import files (read only header)
+	const importPromises = importFiles.map(async (file) => {
 		try {
-			// Read only first 1KB - UID is always in the header
-			const fd = fs.openSync(file.fsPath, "r");
-			const buffer = Buffer.alloc(1024);
-			fs.readSync(fd, buffer, 0, 1024, 0);
-			fs.closeSync(fd);
-			const text = buffer.toString("utf-8");
-
+			const text = await readFileHeaderAsync(file.fsPath, 1024);
 			const match = text.match(/uid="(uid:\/\/[0-9a-zA-Z]*)"/);
-			if (!match) {
-				continue;
-			}
+			if (!match) return null;
 
-			const uid = match[1];
 			const file_path = file.fsPath.substring(0, file.fsPath.length - ".import".length);
-			if (!fs.existsSync(file_path)) {
-				continue;
+			try {
+				await fs.promises.access(file_path, fs.constants.F_OK);
+			} catch {
+				return null;
 			}
 
-			const file_uri = vscode.Uri.file(file_path);
-			uidCache.set(uid, file_uri);
-
-			if (not_found_uids.includes(uid)) {
-				uris.set(uid, file_uri);
-				if (uris.size === not_found_uids.length) {
-					log.info(`[UID] Resolved all in ${Date.now() - startTime}ms (from .import files)`);
-					return uris;
-				}
-			}
+			return { uid: match[1], uri: vscode.Uri.file(file_path) };
 		} catch {
-			// Skip files that can't be read
+			return null;
 		}
-	}
+	});
 
-	if (uris.size === not_found_uids.length) {
-		log.info(`[UID] Resolved all in ${Date.now() - startTime}ms`);
-		return uris;
-	}
-
-	// Search .tres and .tscn files (UIDs embedded in file header)
-	const resourceFiles = await vscode.workspace.findFiles("**/*.{tres,tscn}", null);
-
-	for (const file of resourceFiles) {
+	// Process .tres/.tscn files (read only header)
+	const resourcePromises = resourceFiles.map(async (file) => {
 		try {
-			// Read only first 512 bytes - header with UID is at the start
-			const fd = fs.openSync(file.fsPath, "r");
-			const buffer = Buffer.alloc(512);
-			fs.readSync(fd, buffer, 0, 512, 0);
-			fs.closeSync(fd);
-			const text = buffer.toString("utf-8");
-
+			const text = await readFileHeaderAsync(file.fsPath, 512);
 			const match = text.match(/uid="(uid:\/\/[0-9a-zA-Z]*)"/);
-			if (!match) {
-				continue;
-			}
+			if (!match) return null;
 
-			const uid = match[1];
-			const file_uri = file;
-			uidCache.set(uid, file_uri);
-
-			if (not_found_uids.includes(uid)) {
-				uris.set(uid, file_uri);
-				if (uris.size === not_found_uids.length) {
-					log.info(`[UID] Resolved all in ${Date.now() - startTime}ms (from .tres/.tscn files)`);
-					return uris;
-				}
-			}
+			return { uid: match[1], uri: file };
 		} catch {
-			// Skip files that can't be read
+			return null;
+		}
+	});
+
+	// Wait for all file reads in parallel
+	const [uidResults, importResults, resourceResults] = await Promise.all([
+		Promise.all(uidPromises),
+		Promise.all(importPromises),
+		Promise.all(resourcePromises),
+	]);
+
+	// Combine all results and update cache
+	const allResults = [...uidResults, ...importResults, ...resourceResults];
+	for (const result of allResults) {
+		if (result) {
+			uidCache.set(result.uid, result.uri);
+			if (not_found_uids.includes(result.uid)) {
+				uris.set(result.uid, result.uri);
+			}
 		}
 	}
 
-	log.info(`[UID] Search completed in ${Date.now() - startTime}ms, found ${uris.size}/${not_found_uids.length}`)
+	log.info(`[UID] Search completed in ${Date.now() - startTime}ms, found ${uris.size}/${not_found_uids.length}`);
 
 	// Log unresolved UIDs
 	const unresolved = not_found_uids.filter(uid => !uris.has(uid));

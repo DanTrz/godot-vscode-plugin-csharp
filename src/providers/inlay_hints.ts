@@ -19,6 +19,9 @@ import { createLogger, get_configuration } from "../utils";
 
 const log = createLogger("providers.inlay_hints");
 
+// Debounce delay for status change events (ms)
+const STATUS_CHANGE_DEBOUNCE = 500;
+
 /**
  * Returns a label from a detail string.
  * E.g. `var a: int` gets parsed to ` int `.
@@ -66,6 +69,9 @@ export class GDInlayHintsProvider implements InlayHintsProvider {
 		return this._onDidChangeInlayHints.event;
 	}
 
+	// Debounce timer for status change events
+	private statusChangeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
 	constructor(private context: ExtensionContext) {
 		const selector = [
 			{ language: "gdresource", scheme: "file" },
@@ -74,15 +80,45 @@ export class GDInlayHintsProvider implements InlayHintsProvider {
 		];
 		context.subscriptions.push(vscode.languages.registerInlayHintsProvider(selector, this));
 
-		// Fire change event on any status change
+		// Debounce status change events to prevent excessive recomputation
+		// During reconnection, status changes rapidly (PENDING→CONNECTED→DISCONNECTED→RETRYING→...)
 		globals.lsp.onStatusChanged(() => {
+			this.debouncedInlayHintsChange();
+		});
+
+		// Fire change event when LSP is fully initialized
+		globals.lsp.onLSPReady(() => {
+			// Clear any pending debounce and fire immediately when LSP is ready
+			if (this.statusChangeDebounceTimer) {
+				clearTimeout(this.statusChangeDebounceTimer);
+				this.statusChangeDebounceTimer = null;
+			}
 			this._onDidChangeInlayHints.fire();
 		});
 
-		// Fire change event when LSP is fully initialized (replaces old 250ms setTimeout hack)
-		globals.lsp.onLSPReady(() => {
-			this._onDidChangeInlayHints.fire();
+		// Clean up timer on dispose
+		context.subscriptions.push({
+			dispose: () => {
+				if (this.statusChangeDebounceTimer) {
+					clearTimeout(this.statusChangeDebounceTimer);
+					this.statusChangeDebounceTimer = null;
+				}
+			}
 		});
+	}
+
+	/**
+	 * Debounced inlay hints change notification
+	 * Prevents rapid-fire recomputation during LSP reconnection cycles
+	 */
+	private debouncedInlayHintsChange() {
+		if (this.statusChangeDebounceTimer) {
+			clearTimeout(this.statusChangeDebounceTimer);
+		}
+		this.statusChangeDebounceTimer = setTimeout(() => {
+			this.statusChangeDebounceTimer = null;
+			this._onDidChangeInlayHints.fire();
+		}, STATUS_CHANGE_DEBOUNCE);
 	}
 
 	buildHint(start: Position, detail: string): InlayHint {
@@ -100,6 +136,11 @@ export class GDInlayHintsProvider implements InlayHintsProvider {
 		const text = document.getText(range);
 		log.debug("Inlay Hints: provideInlayHints");
 
+		// Check cancellation early
+		if (token.isCancellationRequested) {
+			return hints;
+		}
+
 		if (document.fileName.endsWith(".gd")) {
 			if (!get_configuration("inlayHints.gdscript", true)) {
 				return hints;
@@ -109,11 +150,21 @@ export class GDInlayHintsProvider implements InlayHintsProvider {
 				return hints;
 			}
 
+			// Check cancellation before LSP request
+			if (token.isCancellationRequested) {
+				return hints;
+			}
+
 			const symbolsRequest = (await globals.lsp.client.send_request("textDocument/documentSymbol", {
 				textDocument: { uri: document.uri.toString() },
 			})) as DocumentSymbol[];
 
-			if (symbolsRequest.length === 0) {
+			// Check cancellation after LSP request
+			if (token.isCancellationRequested) {
+				return hints;
+			}
+
+			if (!symbolsRequest || symbolsRequest.length === 0) {
 				return hints;
 			}
 
@@ -131,9 +182,12 @@ export class GDInlayHintsProvider implements InlayHintsProvider {
 			// we still need to use regex to find all inferred variable declarations.
 			const regex = /((var|const)\s+)([\w\d_]+)\s*:=/g;
 
+			// Collect all matches first, then batch the hover requests
+			const matchesNeedingHover: Array<{match: RegExpMatchArray; start: Position; hoverPosition: Position}> = [];
+
 			for (const match of text.matchAll(regex)) {
 				if (token.isCancellationRequested) {
-					break;
+					return hints;
 				}
 				// TODO: until godot supports nested document symbols, we need to send
 				// a hover request for each variable declaration that is nested
@@ -148,11 +202,36 @@ export class GDInlayHintsProvider implements InlayHintsProvider {
 					}
 				}
 
+				// Collect for batched hover request
 				const hoverPosition = document.positionAt(match.index + match[1].length);
-				const detail = await addByHover(document, hoverPosition);
-				if (detail) {
-					const hint = this.buildHint(start, detail);
-					hints.push(hint);
+				matchesNeedingHover.push({ match, start, hoverPosition });
+			}
+
+			// Batch hover requests - process in parallel with a concurrency limit
+			const BATCH_SIZE = 5; // Limit concurrent hover requests
+			for (let i = 0; i < matchesNeedingHover.length; i += BATCH_SIZE) {
+				if (token.isCancellationRequested) {
+					return hints;
+				}
+
+				const batch = matchesNeedingHover.slice(i, i + BATCH_SIZE);
+				const hoverPromises = batch.map(({ hoverPosition }) =>
+					addByHover(document, hoverPosition)
+				);
+
+				const results = await Promise.all(hoverPromises);
+
+				// Check cancellation after batch
+				if (token.isCancellationRequested) {
+					return hints;
+				}
+
+				for (let j = 0; j < results.length; j++) {
+					const detail = results[j];
+					if (detail) {
+						const hint = this.buildHint(batch[j].start, detail);
+						hints.push(hint);
+					}
 				}
 			}
 			return hints;
