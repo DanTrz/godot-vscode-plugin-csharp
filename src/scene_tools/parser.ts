@@ -44,7 +44,7 @@ export class SceneParser {
 			const content = fs.readFileSync(uri.fsPath, "utf-8");
 
 			// Find the first [node ...] line (root node has no parent attribute)
-			const rootNodeMatch = content.match(/\[node\s+name="[^"]+"\s+type="(\w+)"\]/);
+			const rootNodeMatch = content.match(/\[node\s+name="[^"]+"\s+type="(\w+)"/);
 			if (rootNodeMatch?.[1]) {
 				const rootType = rootNodeMatch[1];
 				this.rootTypeCache.set(resourcePath, rootType);
@@ -91,7 +91,7 @@ export class SceneParser {
 			const content = fs.readFileSync(fullPath, "utf-8");
 
 			// Find the first [node ...] line with a type (root node has no parent attribute)
-			const rootNodeMatch = content.match(/\[node\s+name="[^"]+"\s+type="(\w+)"\]/);
+			const rootNodeMatch = content.match(/\[node\s+name="[^"]+"\s+type="(\w+)"/);
 			if (rootNodeMatch?.[1]) {
 				const rootType = rootNodeMatch[1];
 				this.rootTypeCache.set(resourcePath, rootType);
@@ -185,9 +185,9 @@ export class SceneParser {
 		for (const match of text.matchAll(nodeRegex)) {
 			nodeMatchCount++;
 			const line = match[0];
-			const name = line.match(/name="([^.:@/"%]+)"/)?.[1];
+			const name = line.match(/name="([^"]+)"/)?.[1];
 			const type = line.match(/type="([\w]+)"/)?.[1] ?? "PackedScene";
-			let parent = line.match(/parent="(([^.:@/"%]|[\/.])+)"/)?.[1];
+			let parent = line.match(/parent="([^"]+)"/)?.[1];
 			const instance = line.match(/instance=ExtResource\(\s*"?([\w]+)"?\s*\)/)?.[1];
 
 			// leaving this in case we have a reason to use these node paths in the future
@@ -377,7 +377,21 @@ export class SceneParser {
 		// Clone and reparent all children of the instanced scene's root
 		const rootChildren = instanceScene.root?.children || [];
 
+		// Build a set of child names already present as overrides in the parent scene
+		const existingChildNames = new Set(
+			instanceNode.children.map(c => c.label as string)
+		);
+
 		for (const child of rootChildren) {
+			// Override node exists — fix its type if it defaulted to "PackedScene"
+			if (existingChildNames.has(child.label as string)) {
+				const overrideNode = instanceNode.children.find(c => c.label === child.label);
+				if (overrideNode && overrideNode.className === "PackedScene") {
+					overrideNode.className = child.className;
+					overrideNode.description = child.className;
+				}
+				continue;
+			}
 			// Clone the node to avoid modifying the cached instance scene
 			const clonedChild = this.cloneNodeTree(child, instanceNode, parentScene);
 			instanceNode.children.push(clonedChild);

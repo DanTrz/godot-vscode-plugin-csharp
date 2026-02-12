@@ -30,12 +30,31 @@
 	/** @type {string} */
 	let lightIconsBaseUri = "";
 
+	/** @type {Array<{fsPath: string, displayName: string, resPath: string}>} */
+	let sceneList = [];
+
+	/** @type {boolean} */
+	let dropdownOpen = false;
+
+	/** @type {string} */
+	let dropdownFilter = "";
+
+	/** @type {number} */
+	let dropdownHighlightIndex = -1;
+
 	// DOM elements
 	const searchInput = /** @type {HTMLInputElement} */ (document.getElementById("searchInput"));
 	const clearButton = document.getElementById("clearSearch");
 	const treeContainer = document.getElementById("treeContainer");
-	const sceneTitle = document.getElementById("sceneTitle");
 	const contextMenu = document.getElementById("contextMenu");
+
+	// Scene selector elements
+	const sceneSelector = document.getElementById("sceneSelector");
+	const sceneSelectorTrigger = document.getElementById("sceneSelectorTrigger");
+	const sceneSelectorLabel = document.getElementById("sceneSelectorLabel");
+	const sceneSelectorDropdown = document.getElementById("sceneSelectorDropdown");
+	const sceneSelectorFilter = /** @type {HTMLInputElement} */ (document.getElementById("sceneSelectorFilter"));
+	const sceneSelectorList = document.getElementById("sceneSelectorList");
 
 	// Debounce timer for search
 	let searchDebounceTimer = null;
@@ -89,10 +108,56 @@
 			}
 		});
 
-		// Close context menu on click outside
+		// Scene selector dropdown
+		sceneSelectorTrigger.addEventListener("click", (e) => {
+			e.stopPropagation();
+			toggleDropdown();
+		});
+
+		sceneSelectorFilter.addEventListener("input", (e) => {
+			dropdownFilter = /** @type {HTMLInputElement} */ (e.target).value;
+			dropdownHighlightIndex = -1;
+			renderDropdownList();
+		});
+
+		sceneSelectorFilter.addEventListener("keydown", (e) => {
+			e.stopPropagation();
+			const filtered = getFilteredScenes();
+			switch (e.key) {
+				case "ArrowDown":
+					e.preventDefault();
+					dropdownHighlightIndex = Math.min(dropdownHighlightIndex + 1, filtered.length - 1);
+					renderDropdownList();
+					scrollHighlightedIntoView();
+					break;
+				case "ArrowUp":
+					e.preventDefault();
+					dropdownHighlightIndex = Math.max(dropdownHighlightIndex - 1, 0);
+					renderDropdownList();
+					scrollHighlightedIntoView();
+					break;
+				case "Enter":
+					e.preventDefault();
+					if (dropdownHighlightIndex >= 0 && dropdownHighlightIndex < filtered.length) {
+						selectScene(filtered[dropdownHighlightIndex].fsPath);
+					} else if (filtered.length === 1) {
+						selectScene(filtered[0].fsPath);
+					}
+					break;
+				case "Escape":
+					e.preventDefault();
+					closeDropdown();
+					break;
+			}
+		});
+
+		// Close context menu and dropdown on click outside
 		document.addEventListener("click", (e) => {
 			if (!contextMenu.contains(/** @type {Node} */ (e.target))) {
 				hideContextMenu();
+			}
+			if (dropdownOpen && !sceneSelector.contains(/** @type {Node} */ (e.target))) {
+				closeDropdown();
 			}
 		});
 
@@ -112,7 +177,7 @@
 			case "updateTree":
 				currentTreeData = message.tree;
 				currentScenePath = message.scenePath;
-				sceneTitle.textContent = message.sceneTitle || "";
+				updateSelectorLabel(message.sceneTitle || "", message.scenePath || "");
 				darkIconsBaseUri = message.darkIconsBaseUri || "";
 				lightIconsBaseUri = message.lightIconsBaseUri || "";
 				renderTree();
@@ -127,9 +192,20 @@
 			case "clear":
 				currentTreeData = null;
 				currentScenePath = "";
-				sceneTitle.textContent = "";
+				updateSelectorLabel("", "");
 				treeContainer.innerHTML = '<div class="welcome-message">Open a Scene to see a preview of its structure</div>';
 				break;
+
+			case "updateSceneList": {
+				sceneList = message.scenes || [];
+				currentScenePath = message.currentScenePath || currentScenePath;
+				renderDropdownList();
+				const current = sceneList.find(s => s.fsPath === currentScenePath);
+				if (current) {
+					updateSelectorLabel(current.displayName, current.fsPath);
+				}
+				break;
+			}
 
 			case "lockStateChanged":
 				// Could update UI to show lock state
@@ -646,6 +722,126 @@
 	 */
 	function hideContextMenu() {
 		contextMenu.classList.remove("visible");
+	}
+
+	// ──── Scene Selector Dropdown ────
+
+	/**
+	 * Update the dropdown trigger label
+	 * @param {string} title
+	 * @param {string} fsPath
+	 */
+	function updateSelectorLabel(title, fsPath) {
+		if (title) {
+			sceneSelectorLabel.textContent = title;
+			sceneSelectorLabel.title = fsPath;
+			sceneSelectorLabel.classList.remove("placeholder");
+		} else {
+			sceneSelectorLabel.textContent = "No scene selected";
+			sceneSelectorLabel.title = "";
+			sceneSelectorLabel.classList.add("placeholder");
+		}
+	}
+
+	function openDropdown() {
+		dropdownOpen = true;
+		dropdownFilter = "";
+		dropdownHighlightIndex = -1;
+		sceneSelectorDropdown.classList.add("visible");
+		sceneSelectorFilter.value = "";
+		sceneSelectorFilter.focus();
+		renderDropdownList();
+	}
+
+	function closeDropdown() {
+		dropdownOpen = false;
+		sceneSelectorDropdown.classList.remove("visible");
+		dropdownHighlightIndex = -1;
+	}
+
+	function toggleDropdown() {
+		if (dropdownOpen) {
+			closeDropdown();
+		} else {
+			openDropdown();
+		}
+	}
+
+	/**
+	 * Get filtered scene list based on current filter text
+	 * @returns {Array<{fsPath: string, displayName: string, resPath: string}>}
+	 */
+	function getFilteredScenes() {
+		if (!dropdownFilter.trim()) {
+			return sceneList;
+		}
+		const lower = dropdownFilter.toLowerCase();
+		return sceneList.filter(s =>
+			s.displayName.toLowerCase().includes(lower) ||
+			s.resPath.toLowerCase().includes(lower)
+		);
+	}
+
+	/**
+	 * Render the dropdown list items
+	 */
+	function renderDropdownList() {
+		sceneSelectorList.innerHTML = "";
+		const filtered = getFilteredScenes();
+
+		if (filtered.length === 0) {
+			const empty = document.createElement("div");
+			empty.className = "scene-selector-empty";
+			empty.textContent = dropdownFilter ? "No matching scenes" : "No scenes found";
+			sceneSelectorList.appendChild(empty);
+			return;
+		}
+
+		filtered.forEach((scene, index) => {
+			const item = document.createElement("div");
+			item.className = "scene-selector-item";
+			if (scene.fsPath === currentScenePath) {
+				item.classList.add("current");
+			}
+			if (index === dropdownHighlightIndex) {
+				item.classList.add("highlighted");
+			}
+
+			const name = document.createElement("span");
+			name.className = "scene-selector-item-name";
+			name.textContent = scene.displayName;
+			item.appendChild(name);
+
+			const resPath = document.createElement("span");
+			resPath.className = "scene-selector-item-path";
+			resPath.textContent = scene.resPath;
+			item.appendChild(resPath);
+
+			item.addEventListener("click", () => {
+				selectScene(scene.fsPath);
+			});
+
+			sceneSelectorList.appendChild(item);
+		});
+	}
+
+	/**
+	 * Select a scene from the dropdown
+	 * @param {string} fsPath
+	 */
+	function selectScene(fsPath) {
+		closeDropdown();
+		vscode.postMessage({ type: "selectScene", fsPath });
+	}
+
+	/**
+	 * Scroll highlighted item into view
+	 */
+	function scrollHighlightedIntoView() {
+		const highlighted = sceneSelectorList.querySelector(".scene-selector-item.highlighted");
+		if (highlighted) {
+			highlighted.scrollIntoView({ block: "nearest" });
+		}
 	}
 
 	// Initialize when DOM is ready

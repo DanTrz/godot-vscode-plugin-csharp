@@ -10,3 +10,5 @@ workspace.code-workspace
 .claude/
 .claude/*
 *.MD
+.godot/
+.godot/*

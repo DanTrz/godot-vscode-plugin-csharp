@@ -97,21 +97,176 @@ body {
 	outline: 1px solid var(--vscode-focusBorder);
 }
 
-/* Scene Title */
-.scene-title {
+/* Scene Selector Dropdown */
+.scene-selector {
+	position: relative;
 	padding: 4px 8px;
-	font-size: 11px;
-	color: var(--vscode-descriptionForeground);
 	background: var(--vscode-sideBar-background);
 	border-bottom: 1px solid var(--vscode-panel-border, transparent);
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
 	flex-shrink: 0;
 }
 
-.scene-title:empty {
+.scene-selector-trigger {
+	display: flex;
+	align-items: center;
+	width: 100%;
+	padding: 2px 6px;
+	background: var(--vscode-input-background);
+	border: 1px solid var(--vscode-input-border, transparent);
+	border-radius: 2px;
+	color: var(--vscode-input-foreground);
+	font-family: inherit;
+	font-size: 11px;
+	cursor: pointer;
+	height: 24px;
+	text-align: left;
+}
+
+.scene-selector-trigger:hover {
+	border-color: var(--vscode-focusBorder);
+}
+
+.scene-selector-trigger:focus {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+.scene-selector-label {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.scene-selector-label.placeholder {
+	color: var(--vscode-input-placeholderForeground);
+}
+
+.scene-selector-chevron {
+	flex-shrink: 0;
+	font-size: 12px;
+	margin-left: 4px;
+	color: var(--vscode-foreground);
+}
+
+/* Dropdown Panel */
+.scene-selector-dropdown {
 	display: none;
+	flex-direction: column;
+	position: absolute;
+	top: 100%;
+	left: 8px;
+	right: 8px;
+	z-index: 100;
+	background: var(--vscode-dropdown-background, var(--vscode-menu-background));
+	border: 1px solid var(--vscode-dropdown-border, var(--vscode-menu-border, var(--vscode-widget-border)));
+	border-radius: 2px;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+	max-height: 300px;
+}
+
+.scene-selector-dropdown.visible {
+	display: flex;
+}
+
+/* Filter input inside dropdown */
+.scene-selector-filter-wrapper {
+	display: flex;
+	align-items: center;
+	padding: 4px;
+	border-bottom: 1px solid var(--vscode-panel-border, transparent);
+}
+
+.scene-selector-filter-icon {
+	color: var(--vscode-input-placeholderForeground);
+	margin: 0 4px;
+	font-size: 12px;
+	flex-shrink: 0;
+}
+
+.scene-selector-filter {
+	flex: 1;
+	background: var(--vscode-input-background);
+	border: 1px solid var(--vscode-input-border, transparent);
+	border-radius: 2px;
+	color: var(--vscode-input-foreground);
+	font-family: inherit;
+	font-size: inherit;
+	padding: 2px 4px;
+	height: 22px;
+	outline: none;
+}
+
+.scene-selector-filter:focus {
+	border-color: var(--vscode-focusBorder);
+}
+
+.scene-selector-filter::placeholder {
+	color: var(--vscode-input-placeholderForeground);
+}
+
+/* Scene list inside dropdown */
+.scene-selector-list {
+	overflow-y: auto;
+	max-height: 260px;
+}
+
+.scene-selector-list::-webkit-scrollbar {
+	width: 8px;
+}
+
+.scene-selector-list::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.scene-selector-list::-webkit-scrollbar-thumb {
+	background: var(--vscode-scrollbarSlider-background);
+	border-radius: 4px;
+}
+
+.scene-selector-list::-webkit-scrollbar-thumb:hover {
+	background: var(--vscode-scrollbarSlider-hoverBackground);
+}
+
+/* Individual scene items */
+.scene-selector-item {
+	display: flex;
+	flex-direction: column;
+	padding: 4px 8px;
+	cursor: pointer;
+	border-left: 2px solid transparent;
+}
+
+.scene-selector-item:hover,
+.scene-selector-item.highlighted {
+	background: var(--vscode-list-hoverBackground);
+}
+
+.scene-selector-item.current {
+	border-left-color: var(--vscode-focusBorder);
+	background: var(--vscode-list-inactiveSelectionBackground);
+}
+
+.scene-selector-item-name {
+	font-size: 12px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.scene-selector-item-path {
+	font-size: 10px;
+	color: var(--vscode-descriptionForeground);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.scene-selector-empty {
+	padding: 8px;
+	text-align: center;
+	color: var(--vscode-descriptionForeground);
+	font-size: 11px;
 }
 
 /* Tree Container */

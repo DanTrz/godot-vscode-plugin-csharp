@@ -1,10 +1,12 @@
 import * as fs from "node:fs";
+import * as path from "node:path";
 import * as vscode from "vscode";
 import {
 	convert_resource_path_to_uri,
 	createLogger,
 	find_file,
 	get_configuration,
+	get_project_dir,
 	make_docs_uri,
 	register_command,
 	set_context,
@@ -46,6 +48,7 @@ export class ScenePreviewWebviewProvider implements vscode.WebviewViewProvider {
 	private viewReady = false;
 	private scenePreviewLocked = false;
 	private currentScene = "";
+	private sceneList: { fsPath: string; displayName: string; resPath: string }[] = [];
 	public parser = new SceneParser();
 	public scene: Scene;
 	private watcher = vscode.workspace.createFileSystemWatcher("**/*.tscn");
@@ -65,6 +68,8 @@ export class ScenePreviewWebviewProvider implements vscode.WebviewViewProvider {
 			register_command("scenePreview.refresh", this.refresh.bind(this)),
 			vscode.window.onDidChangeActiveTextEditor(this.text_editor_changed.bind(this)),
 			this.watcher.onDidChange(this.on_file_changed.bind(this)),
+			this.watcher.onDidCreate(this.on_scene_created_or_deleted.bind(this)),
+			this.watcher.onDidDelete(this.on_scene_created_or_deleted.bind(this)),
 			this.watcher,
 		);
 
@@ -99,8 +104,10 @@ export class ScenePreviewWebviewProvider implements vscode.WebviewViewProvider {
 		});
 
 		// Mark view as ready after a short delay to ensure DOM is loaded
-		setTimeout(() => {
+		setTimeout(async () => {
 			this.viewReady = true;
+			await this.scanWorkspaceScenes();
+			this.sendSceneList();
 			this.refresh();
 		}, 100);
 	}
@@ -109,7 +116,10 @@ export class ScenePreviewWebviewProvider implements vscode.WebviewViewProvider {
 		switch (message.type) {
 			case "ready":
 				this.viewReady = true;
-				this.refresh();
+				this.scanWorkspaceScenes().then(() => {
+					this.sendSceneList();
+					this.refresh();
+				});
 				break;
 			case "search":
 				this.handleSearch(message.query);
@@ -119,6 +129,9 @@ export class ScenePreviewWebviewProvider implements vscode.WebviewViewProvider {
 				break;
 			case "contextMenu":
 				this.handleContextMenu(message.node, message.action);
+				break;
+			case "selectScene":
+				this.handleSelectScene(message.fsPath);
 				break;
 			case "expandNode":
 				// Handled in WebView, no action needed
@@ -227,6 +240,69 @@ export class ScenePreviewWebviewProvider implements vscode.WebviewViewProvider {
 		}, 20);
 	}
 
+	private async on_scene_created_or_deleted(_uri: vscode.Uri): Promise<void> {
+		await this.scanWorkspaceScenes();
+		this.sendSceneList();
+	}
+
+	private async scanWorkspaceScenes(): Promise<void> {
+		const uris = await vscode.workspace.findFiles("**/*.tscn");
+		const projectDir = await get_project_dir();
+
+		const entries: { fsPath: string; fileName: string; resPath: string }[] = [];
+		for (const uri of uris) {
+			const fileName = path.basename(uri.fsPath);
+			let resPath = "";
+			if (projectDir) {
+				const relative = path.relative(projectDir, uri.fsPath).split(path.sep).join(path.posix.sep);
+				resPath = `res://${relative}`;
+			} else {
+				resPath = uri.fsPath;
+			}
+			entries.push({ fsPath: uri.fsPath, fileName, resPath });
+		}
+
+		// Detect duplicate filenames for disambiguation
+		const nameCount = new Map<string, number>();
+		for (const e of entries) {
+			nameCount.set(e.fileName, (nameCount.get(e.fileName) || 0) + 1);
+		}
+
+		this.sceneList = entries.map(e => {
+			let displayName = e.fileName;
+			if ((nameCount.get(e.fileName) || 0) > 1) {
+				const parentDir = path.basename(path.dirname(e.fsPath));
+				displayName = `${parentDir}/${e.fileName}`;
+			}
+			return { fsPath: e.fsPath, displayName, resPath: e.resPath };
+		});
+
+		this.sceneList.sort((a, b) => a.displayName.localeCompare(b.displayName));
+	}
+
+	private sendSceneList(): void {
+		this.postMessage({
+			type: "updateSceneList",
+			scenes: this.sceneList.map(s => ({
+				fsPath: s.fsPath,
+				displayName: s.displayName,
+				resPath: s.resPath,
+			})),
+			currentScenePath: this.currentScene,
+		});
+	}
+
+	private async handleSelectScene(fsPath: string): Promise<void> {
+		if (!fsPath || !fs.existsSync(fsPath)) {
+			return;
+		}
+		this.currentScene = fsPath;
+		if (this.scenePreviewLocked) {
+			this.context.workspaceState.update("godotTools.scenePreview.lockedScene", fsPath);
+		}
+		this.refresh();
+	}
+
 	public async text_editor_changed(): Promise<void> {
 		if (this.scenePreviewLocked) {
 			return;
@@ -278,8 +354,7 @@ export class ScenePreviewWebviewProvider implements vscode.WebviewViewProvider {
 
 		const document = await vscode.workspace.openTextDocument(this.currentScene);
 
-		// Use basic parsing first to debug children issue
-		this.scene = this.parser.parse_scene(document);
+		this.scene = await this.parser.parse_scene_recursive(document);
 		this.sendTreeData();
 	}
 
@@ -446,7 +521,20 @@ export class ScenePreviewWebviewProvider implements vscode.WebviewViewProvider {
 				</button>
 			</div>
 		</div>
-		<div class="scene-title" id="sceneTitle"></div>
+		<div class="scene-selector" id="sceneSelector">
+			<button class="scene-selector-trigger" id="sceneSelectorTrigger" title="Select scene">
+				<span class="scene-selector-label" id="sceneSelectorLabel">No scene selected</span>
+				<span class="codicon codicon-chevron-down scene-selector-chevron"></span>
+			</button>
+			<div class="scene-selector-dropdown" id="sceneSelectorDropdown">
+				<div class="scene-selector-filter-wrapper">
+					<span class="codicon codicon-search scene-selector-filter-icon"></span>
+					<input type="text" id="sceneSelectorFilter" class="scene-selector-filter"
+						placeholder="Filter scenes..." autocomplete="off" spellcheck="false">
+				</div>
+				<div class="scene-selector-list" id="sceneSelectorList"></div>
+			</div>
+		</div>
 		<div class="tree-container" id="treeContainer">
 			<div class="welcome-message">Open a Scene to see a preview of its structure</div>
 		</div>
