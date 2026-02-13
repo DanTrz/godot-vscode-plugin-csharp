@@ -399,6 +399,44 @@ body {
 	display: none;
 }
 
+/* Rebuild C# Banner */
+.build-banner {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 10px;
+	margin: 0 8px 4px 8px;
+	background-color: var(--vscode-inputValidation-infoBackground, var(--vscode-inputValidation-warningBackground));
+	border: 1px solid var(--vscode-inputValidation-infoBorder, var(--vscode-inputValidation-warningBorder));
+	border-radius: 3px;
+	font-size: 12px;
+	color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground));
+}
+
+.build-banner-icon {
+	color: var(--vscode-editorInfo-foreground);
+	flex-shrink: 0;
+}
+
+.build-banner-text {
+	flex: 1;
+}
+
+.build-banner-button {
+	background-color: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+	border: none;
+	padding: 2px 8px;
+	border-radius: 2px;
+	cursor: pointer;
+	font-size: 11px;
+	white-space: nowrap;
+}
+
+.build-banner-button:hover {
+	background-color: var(--vscode-button-hoverBackground);
+}
+
 /* Flat Search Results */
 .search-results {
 	padding: 0;

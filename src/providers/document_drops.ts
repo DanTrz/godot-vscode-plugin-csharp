@@ -1,4 +1,5 @@
 import * as path from "node:path";
+import { exec, ChildProcess } from "node:child_process";
 import * as vscode from "vscode";
 import {
 	CancellationToken,
@@ -14,15 +15,23 @@ import {
 	Uri,
 } from "vscode";
 import { SceneParser } from "../scene_tools/parser";
-import { createLogger, node_name_to_snake, node_name_to_pascal, node_name_to_camel, get_project_version, convert_uri_to_resource_path } from "../utils";
+import { ScenePreviewWebviewProvider } from "../scene_tools/scene_preview_webview";
+import { createLogger, node_name_to_snake, node_name_to_pascal, node_name_to_camel, get_project_version, get_project_dir, convert_uri_to_resource_path } from "../utils";
+import { subProcess, killSubProcesses } from "../utils/subspawn";
 import { SceneNode } from "../scene_tools/types";
 
 const log = createLogger("providers.drops");
 
+interface CSharpStyleResult {
+	edit: string | vscode.SnippetString;
+	/** The exact C# property/field name for scene file NodePath assignment. Undefined = no scene modification. */
+	scenePropertyName?: string;
+}
+
 interface CSharpStyleOption {
 	label: string;
 	description: string;
-	generator: (className: string, propertyName: string, fieldName: string, nodePath: string) => string | vscode.SnippetString;
+	generator: (className: string, propertyName: string, fieldName: string, nodePath: string) => CSharpStyleResult;
 }
 
 const CSHARP_STYLE_OPTIONS: Record<string, CSharpStyleOption> = {
@@ -34,7 +43,7 @@ const CSHARP_STYLE_OPTIONS: Record<string, CSharpStyleOption> = {
 			snippet.appendText(`[Export] private ${className} _`);
 			snippet.appendPlaceholder(fieldName);
 			snippet.appendText(" { get; set; }");
-			return snippet;
+			return { edit: snippet, scenePropertyName: `_${fieldName}` };
 		},
 	},
 	exportPublic: {
@@ -45,20 +54,22 @@ const CSHARP_STYLE_OPTIONS: Record<string, CSharpStyleOption> = {
 			snippet.appendText(`[Export] public ${className} `);
 			snippet.appendPlaceholder(propertyName);
 			snippet.appendText(" { get; set; }");
-			return snippet;
+			return { edit: snippet, scenePropertyName: propertyName };
 		},
 	},
 	lazyField: {
 		label: "Lazy field (C# 14)",
 		description: "Cached with field keyword",
-		generator: (className, _propertyName, fieldName, nodePath) =>
-			`${className} _${fieldName} => field ??= GetNode<${className}>("${nodePath}");`,
+		generator: (className, _propertyName, fieldName, nodePath) => ({
+			edit: `${className} _${fieldName} => field ??= GetNode<${className}>("${nodePath}");`,
+		}),
 	},
 	expressionBodied: {
 		label: "Expression-bodied property",
 		description: "Simple getter, no caching",
-		generator: (className, propertyName, _fieldName, nodePath) =>
-			`${className} ${propertyName} => GetNode<${className}>("${nodePath}");`,
+		generator: (className, propertyName, _fieldName, nodePath) => ({
+			edit: `${className} ${propertyName} => GetNode<${className}>("${nodePath}");`,
+		}),
 	},
 };
 
@@ -67,6 +78,7 @@ const DEFAULT_CSHARP_STYLE = "exportPublic";
 
 export class GDDocumentDropEditProvider implements DocumentDropEditProvider {
 	public parser = new SceneParser();
+	public scenePreview?: ScenePreviewWebviewProvider;
 
 	constructor(private context: ExtensionContext) {
 		const dropEditSelector = [
@@ -74,6 +86,9 @@ export class GDDocumentDropEditProvider implements DocumentDropEditProvider {
 			{ language: "gdscript", scheme: "file" },
 		];
 		context.subscriptions.push(languages.registerDocumentDropEditProvider(dropEditSelector, this));
+		context.subscriptions.push(
+			vscode.commands.registerCommand("godotTools.rebuildCSharp", () => this.rebuildCSharp()),
+		);
 	}
 
 	public async provideDocumentDropEdits(
@@ -183,8 +198,8 @@ export class GDDocumentDropEditProvider implements DocumentDropEditProvider {
 					const config = vscode.workspace.getConfiguration("godotTools.csharp");
 					const styleKey = config.get<string>("nodeReferenceStyle", DEFAULT_CSHARP_STYLE);
 					const style = CSHARP_STYLE_OPTIONS[styleKey] || CSHARP_STYLE_OPTIONS[DEFAULT_CSHARP_STYLE];
-					const code = style.generator(className, propertyName, fieldName, nodePath);
-					return new vscode.DocumentDropEdit(code);
+					const result = style.generator(className, propertyName, fieldName, nodePath);
+					return new vscode.DocumentDropEdit(result.edit);
 				}
 
 				// Non-empty line: inline GetNode call
@@ -234,6 +249,7 @@ export class GDDocumentDropEditProvider implements DocumentDropEditProvider {
 			}
 
 			// Find the node that has this script attached
+			// Pass 1: Direct script in scene ext_resources
 			let nodePathOfTarget: SceneNode;
 			if (scriptId) {
 				if (scene.root?.scriptId === scriptId) {
@@ -241,6 +257,19 @@ export class GDDocumentDropEditProvider implements DocumentDropEditProvider {
 				} else {
 					for (const node of scene.nodes.values()) {
 						if (node.scriptId === scriptId) {
+							nodePathOfTarget = node;
+							break;
+						}
+					}
+				}
+			}
+
+			// Pass 2: Check instanced scene root scripts (e.g., ChildScene.tscn whose root has the script)
+			if (!nodePathOfTarget && targetResPath) {
+				for (const node of scene.nodes.values()) {
+					if (node.resourcePath?.endsWith(".tscn")) {
+						const rootScript = this.parser.getRootScriptFromSceneSync(node.resourcePath);
+						if (rootScript === targetResPath) {
 							nodePathOfTarget = node;
 							break;
 						}
@@ -295,8 +324,16 @@ export class GDDocumentDropEditProvider implements DocumentDropEditProvider {
 						? config.get<string>("secondaryNodeReferenceStyle", "lazyField")
 						: config.get<string>("nodeReferenceStyle", DEFAULT_CSHARP_STYLE);
 					const style = CSHARP_STYLE_OPTIONS[styleKey] || CSHARP_STYLE_OPTIONS[DEFAULT_CSHARP_STYLE];
-					const code = style.generator(className, propertyName, fieldName, nodePath);
-					return new vscode.DocumentDropEdit(code);
+					const result = style.generator(className, propertyName, fieldName, nodePath);
+
+					// For export styles: if script is in the scene, immediately modify the .tscn
+					if (result.scenePropertyName && nodePathOfTarget) {
+						this.applySceneModification(scenePath, nodePathOfTarget.text, nodePathOfTarget.label, result.scenePropertyName, nodePath)
+							.catch(err => log.error("Failed to apply scene modification:", err));
+						this.scenePreview?.showRebuildBanner();
+					}
+
+					return new vscode.DocumentDropEdit(result.edit);
 				}
 
 				return new vscode.DocumentDropEdit(`GetNode<${className}>("${nodePath}")`);
@@ -306,5 +343,164 @@ export class GDDocumentDropEditProvider implements DocumentDropEditProvider {
 		}
 
 		return undefined;
+	}
+
+	/**
+	 * Rebuild C# project via dotnet build.
+	 * Triggered by the "Rebuild" button in the Scene Preview banner.
+	 */
+	private async rebuildCSharp(): Promise<void> {
+		const projectDir = await get_project_dir();
+		if (!projectDir) {
+			vscode.window.showWarningMessage("Could not determine Godot project directory.");
+			return;
+		}
+
+		const slnFiles = await vscode.workspace.findFiles("**/*.sln", null, 1);
+		const buildTarget = slnFiles.length > 0 ? `"${slnFiles[0].fsPath}"` : ".";
+		const buildCommand = `dotnet build ${buildTarget}`;
+
+		const success = await vscode.window.withProgress(
+			{ location: vscode.ProgressLocation.Notification, title: "Rebuilding C# project...", cancellable: false },
+			() => new Promise<boolean>((resolve) => {
+				exec(buildCommand, { cwd: projectDir }, (err, _stdout, stderr) => {
+					if (err) {
+						log.error("C# build failed:", stderr);
+						vscode.window.showWarningMessage(
+							"C# build failed. Rebuild manually so the NodePaths are recognized.",
+						);
+						resolve(false);
+					} else {
+						log.info("C# build succeeded");
+						resolve(true);
+					}
+				});
+			}),
+		);
+
+		if (success) {
+			this.scenePreview?.hideRebuildBanner();
+			vscode.window.showInformationMessage("C# rebuilt. You can now reload the scene in Godot.");
+		}
+	}
+
+	/**
+	 * Modify a .tscn scene file to add a NodePath assignment for an exported variable.
+	 * Adds the property name to node_paths=PackedStringArray(...) and inserts the NodePath property.
+	 */
+	private async applySceneModification(
+		sceneFsPath: string,
+		targetNodeText: string,
+		targetNodeLabel: string,
+		propertyName: string,
+		nodePath: string,
+	): Promise<void> {
+		const sceneUri = vscode.Uri.file(sceneFsPath);
+		const doc = await vscode.workspace.openTextDocument(sceneUri);
+		const text = doc.getText();
+
+		// Find the target node's [node ...] line by matching its exact text
+		const nodeIndex = text.indexOf(targetNodeText);
+		if (nodeIndex < 0) {
+			log.warn(`Could not find node line in scene file: ${targetNodeText}`);
+			return;
+		}
+
+		const nodeLineStart = doc.positionAt(nodeIndex);
+		const nodeLineEnd = doc.positionAt(nodeIndex + targetNodeText.length);
+
+		// Determine the node's body (between this [node] and next [section])
+		const nextSectionRegex = /\n\[/;
+		const bodyStart = nodeIndex + targetNodeText.length;
+		const nextSectionMatch = text.slice(bodyStart).match(nextSectionRegex);
+		const bodyEnd = nextSectionMatch
+			? bodyStart + nextSectionMatch.index
+			: text.length;
+		const nodeBody = text.slice(bodyStart, bodyEnd);
+
+		// Check for duplicate property
+		const propRegex = new RegExp(`^${propertyName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*=`, "m");
+		if (propRegex.test(nodeBody)) {
+			log.debug(`Property ${propertyName} already exists on node, skipping`);
+			return;
+		}
+
+		const edit = new vscode.WorkspaceEdit();
+
+		// 1. Modify the [node ...] line to add/extend node_paths
+		const nodePathsMatch = targetNodeText.match(/node_paths=PackedStringArray\(([^)]*)\)/);
+		let modifiedNodeLine: string;
+		if (nodePathsMatch) {
+			const existingEntries = nodePathsMatch[1];
+			const newEntries = existingEntries
+				? `${existingEntries}, "${propertyName}"`
+				: `"${propertyName}"`;
+			modifiedNodeLine = targetNodeText.replace(
+				/node_paths=PackedStringArray\([^)]*\)/,
+				`node_paths=PackedStringArray(${newEntries})`,
+			);
+		} else {
+			modifiedNodeLine = targetNodeText.replace(
+				/\]$/,
+				` node_paths=PackedStringArray("${propertyName}")]`,
+			);
+		}
+		edit.replace(sceneUri, new vscode.Range(nodeLineStart, nodeLineEnd), modifiedNodeLine);
+
+		// 2. Insert the NodePath property line at the end of the node's body
+		const insertPos = doc.positionAt(bodyEnd);
+		edit.insert(sceneUri, insertPos, `\n${propertyName} = NodePath("${nodePath}")`);
+
+		await vscode.workspace.applyEdit(edit);
+		await doc.save();
+		log.info(`Modified scene file: added ${propertyName} = NodePath("${nodePath}") to node ${targetNodeLabel}`);
+	}
+}
+
+/**
+ * Manages a background `dotnet watch build` process that auto-rebuilds C# on save.
+ * When active, Godot auto-detects assembly changes without manual Rebuild clicks.
+ */
+export class DotnetWatchManager {
+	private proc?: ChildProcess;
+
+	async start(): Promise<void> {
+		if (this.proc) return;
+
+		const projectDir = await get_project_dir();
+		if (!projectDir) return;
+
+		const slnFiles = await vscode.workspace.findFiles("**/*.sln", null, 1);
+		const buildTarget = slnFiles.length > 0 ? slnFiles[0].fsPath : ".";
+
+		this.proc = subProcess("DotnetWatch", `dotnet watch build --project "${buildTarget}"`, {
+			shell: true,
+			cwd: projectDir,
+		});
+
+		this.proc.stdout?.on("data", (data) => {
+			const msg = data.toString().trim();
+			if (msg) log.info(`[dotnet watch] ${msg}`);
+		});
+
+		this.proc.stderr?.on("data", (data) => {
+			const msg = data.toString().trim();
+			if (msg) log.warn(`[dotnet watch] ${msg}`);
+		});
+
+		this.proc.on("close", (code) => {
+			log.info(`dotnet watch exited with code ${code}`);
+			this.proc = undefined;
+		});
+
+		log.info("Started dotnet watch build");
+	}
+
+	stop(): void {
+		if (this.proc) {
+			killSubProcesses("DotnetWatch");
+			this.proc = undefined;
+			log.info("Stopped dotnet watch build");
+		}
 	}
 }

@@ -161,6 +161,11 @@
 			}
 		});
 
+		// Rebuild C# banner button
+		document.getElementById("rebuildBannerButton").addEventListener("click", () => {
+			vscode.postMessage({ type: "rebuildCSharp" });
+		});
+
 		// Handle messages from extension
 		window.addEventListener("message", (event) => {
 			const message = event.data;
@@ -210,6 +215,16 @@
 			case "lockStateChanged":
 				// Could update UI to show lock state
 				break;
+
+			case "showRebuildBanner": {
+				document.getElementById("rebuildBanner").style.display = "flex";
+				break;
+			}
+
+			case "hideRebuildBanner": {
+				document.getElementById("rebuildBanner").style.display = "none";
+				break;
+			}
 		}
 	}
 

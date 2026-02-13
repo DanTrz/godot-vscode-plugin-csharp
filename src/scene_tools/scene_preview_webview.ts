@@ -136,7 +136,18 @@ export class ScenePreviewWebviewProvider implements vscode.WebviewViewProvider {
 			case "expandNode":
 				// Handled in WebView, no action needed
 				break;
+			case "rebuildCSharp":
+				vscode.commands.executeCommand("godotTools.rebuildCSharp");
+				break;
 		}
+	}
+
+	public showRebuildBanner(): void {
+		this.postMessage({ type: "showRebuildBanner" });
+	}
+
+	public hideRebuildBanner(): void {
+		this.postMessage({ type: "hideRebuildBanner" });
 	}
 
 	private handleSearch(query: string): void {
@@ -534,6 +545,11 @@ export class ScenePreviewWebviewProvider implements vscode.WebviewViewProvider {
 				</div>
 				<div class="scene-selector-list" id="sceneSelectorList"></div>
 			</div>
+		</div>
+		<div id="rebuildBanner" class="build-banner" style="display: none;">
+			<span class="codicon codicon-info build-banner-icon"></span>
+			<span class="build-banner-text">Rebuild C# before reloading in Godot</span>
+			<button class="build-banner-button" id="rebuildBannerButton">Rebuild</button>
 		</div>
 		<div class="tree-container" id="treeContainer">
 			<div class="welcome-message">Open a Scene to see a preview of its structure</div>

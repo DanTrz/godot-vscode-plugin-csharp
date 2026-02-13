@@ -13,6 +13,7 @@ import {
 	GDDefinitionProvider,
 	GDTaskProvider,
 } from "./providers";
+import { DotnetWatchManager } from "./providers/document_drops";
 import { ClientConnectionManager } from "./lsp";
 import { ScenePreviewWebviewProvider } from "./scene_tools";
 import { GodotDebugger } from "./debugger";
@@ -47,6 +48,7 @@ interface Extension {
 	semanticTokensProvider?: GDSemanticTokensProvider;
 	completionProvider?: GDCompletionItemProvider;
 	tasksProvider?: GDTaskProvider;
+	dotnetWatch?: DotnetWatchManager;
 }
 
 export const globals: Extension = {};
@@ -69,6 +71,14 @@ export function activate(context: vscode.ExtensionContext) {
 
 	globals.linkProvider = new GDDocumentLinkProvider(context);
 	globals.dropsProvider = new GDDocumentDropEditProvider(context);
+	globals.dropsProvider.scenePreview = globals.scenePreviewProvider;
+
+	// Start dotnet watch build if enabled
+	globals.dotnetWatch = new DotnetWatchManager();
+	if (get_configuration("csharp.dotnetWatch")) {
+		globals.dotnetWatch.start();
+	}
+
 	globals.hoverProvider = new GDHoverProvider(context);
 	globals.inlayProvider = new GDInlayHintsProvider(context);
 	globals.formattingProvider = new FormattingProvider(context);
@@ -134,6 +144,7 @@ async function initial_setup() {
 
 export function deactivate(): Thenable<void> {
 	return new Promise<void>((resolve, reject) => {
+		globals.dotnetWatch?.stop();
 		globals.lsp.client.stop();
 		resolve();
 	});

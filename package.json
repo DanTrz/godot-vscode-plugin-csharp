@@ -452,6 +452,11 @@
 					"default": "lazyField",
 					"markdownDescription": "**Secondary** C# code style when dragging nodes with **Ctrl** held.\n\nUse this for an alternate style without changing settings."
 				},
+				"godotTools.csharp.dotnetWatch": {
+					"type": "boolean",
+					"default": false,
+					"markdownDescription": "Start `dotnet watch build` in the background to auto-rebuild C# on save. When enabled, Godot will automatically detect assembly changes without needing to click the Rebuild button."
+				},
 				"godotTools.sceneTreeMonitor.port": {
 					"type": "number",
 					"default": 6007,

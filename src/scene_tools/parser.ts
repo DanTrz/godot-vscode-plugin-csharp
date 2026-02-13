@@ -107,6 +107,74 @@ export class SceneParser {
 	}
 
 	/**
+	 * Get the root node's script res:// path from a scene file without fully parsing it.
+	 * Reads the file, finds ext_resource Script entries, then finds which one the root node uses.
+	 * @param resourcePath The res:// path to the scene file
+	 * @returns The script's res:// path, or undefined if not found
+	 */
+	public getRootScriptFromSceneSync(resourcePath: string): string | undefined {
+		try {
+			const workspaceFolders = vscode.workspace.workspaceFolders;
+			if (!workspaceFolders || workspaceFolders.length === 0) {
+				return undefined;
+			}
+
+			const resPath = resourcePath.replace(/^res:\/\//, "");
+			const fullPath = path.join(workspaceFolders[0].uri.fsPath, resPath);
+
+			if (!fs.existsSync(fullPath)) {
+				return undefined;
+			}
+
+			const content = fs.readFileSync(fullPath, "utf-8");
+
+			// Build a map of ext_resource IDs to paths for Script resources
+			const scriptResources = new Map<string, string>();
+			const extResRegex = /\[ext_resource\s+type="Script"[^\]]*path="([^"]+)"[^\]]*id="([^"]+)"/g;
+			for (const match of content.matchAll(extResRegex)) {
+				scriptResources.set(match[2], match[1]);
+			}
+
+			if (scriptResources.size === 0) {
+				return undefined;
+			}
+
+			// Find the root node (first [node ...] without parent attribute)
+			// and check if it has a script = ExtResource(...) in its body
+			const nodeRegex = /\[node[^\]]*\]/g;
+			let rootNodeEnd = -1;
+			for (const match of content.matchAll(nodeRegex)) {
+				const line = match[0];
+				if (!line.includes("parent=")) {
+					// This is the root node - look for script in its body
+					rootNodeEnd = match.index + line.length;
+					break;
+				}
+			}
+
+			if (rootNodeEnd < 0) {
+				return undefined;
+			}
+
+			// Find the body after root node until next section header
+			const nextSection = content.indexOf("\n[", rootNodeEnd);
+			const body = nextSection >= 0
+				? content.slice(rootNodeEnd, nextSection)
+				: content.slice(rootNodeEnd);
+
+			const scriptMatch = body.match(/script\s*=\s*ExtResource\(\s*"?(\w+)"?\s*\)/);
+			if (scriptMatch?.[1]) {
+				return scriptResources.get(scriptMatch[1]);
+			}
+
+			return undefined;
+		} catch (error) {
+			log.warn(`Failed to get root script from ${resourcePath}:`, error);
+			return undefined;
+		}
+	}
+
+	/**
 	 * Parse a scene file without recursively loading instanced scenes.
 	 * Use parse_scene_recursive() for full tree including instanced PackedScenes.
 	 */
