@@ -79,6 +79,18 @@ export function activate(context: vscode.ExtensionContext) {
 		globals.dotnetWatch.start();
 	}
 
+	context.subscriptions.push(
+		vscode.workspace.onDidChangeConfiguration((e) => {
+			if (e.affectsConfiguration("godotTools.csharp.dotnetWatch")) {
+				if (get_configuration("csharp.dotnetWatch")) {
+					globals.dotnetWatch.start();
+				} else {
+					globals.dotnetWatch.stop();
+				}
+			}
+		}),
+	);
+
 	globals.hoverProvider = new GDHoverProvider(context);
 	globals.inlayProvider = new GDInlayHintsProvider(context);
 	globals.formattingProvider = new FormattingProvider(context);
