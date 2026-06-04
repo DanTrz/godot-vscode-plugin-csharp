@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import type { ChildProcess } from "node:child_process";
 
 import {
 	createLogger,
@@ -28,6 +29,7 @@ export enum ManagerStatus {
 	RETRYING = 6,
 	WRONG_WORKSPACE = 7,
 	INITIALIZING_CLIENT = 8,  // After socket connect, before LSP handshake completes
+	NOT_GODOT_PROJECT = 9,
 }
 
 export class ClientConnectionManager {
@@ -52,6 +54,10 @@ export class ClientConnectionManager {
 	private target: TargetLSP = TargetLSP.EDITOR;
 	private status: ManagerStatus = ManagerStatus.INITIALIZING;
 	private statusWidget: vscode.StatusBarItem = null;
+	private headlessProcess: ChildProcess | null = null;
+	private headlessRestartInProgress = false;
+	private headlessPortRestartAttempts = 0;
+	private isDisposing = false;
 
 	private connectedVersion = "";
 	private retryTimeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -61,6 +67,7 @@ export class ClientConnectionManager {
 	private static readonly BASE_RETRY_DELAY = 1000; // Start with 1 second
 	private static readonly MAX_RETRY_DELAY = 30000; // Cap at 30 seconds
 	private static readonly BACKOFF_MULTIPLIER = 1.5; // Multiply delay by 1.5 each attempt
+	private static readonly MAX_HEADLESS_PORT_RESTARTS = 3;
 	private static readonly JITTER_FACTOR = 0.3; // Add ±30% random jitter
 
 	constructor(private context: vscode.ExtensionContext) {
@@ -77,9 +84,11 @@ export class ClientConnectionManager {
 		this.update_status_widget();
 
 		context.subscriptions.push(
-			register_command("startLanguageServer", () => {
-				// TODO: this might leave the manager in a wierd state
-				this.start_language_server();
+			register_command("startLanguageServer", async () => {
+				const started = await this.start_language_server();
+				if (!started) {
+					return;
+				}
 				this.reconnectionAttempts = 0;
 				this.target = TargetLSP.HEADLESS;
 				this.client.connect(this.target);
@@ -129,29 +138,50 @@ export class ClientConnectionManager {
 		this.target = TargetLSP.EDITOR;
 		this.connectedVersion = undefined;
 
+		if (!(await this.should_create_lsp_for_workspace())) {
+			this.status = ManagerStatus.NOT_GODOT_PROJECT;
+			set_context("connectedToLSP", false);
+			this.statusChanged.fire(this.status);
+			this.update_status_widget();
+			return;
+		}
+
 		if (get_configuration("lsp.headless")) {
 			this.target = TargetLSP.HEADLESS;
-			await this.start_language_server();
+			const started = await this.start_language_server();
+			if (!started) {
+				this.status = ManagerStatus.DISCONNECTED;
+				this.statusChanged.fire(this.status);
+				this.update_status_widget();
+				return;
+			}
 		}
 
 		this.reconnectionAttempts = 0;
+		this.headlessPortRestartAttempts = 0;
 		this.client.connect(this.target);
 	}
 
 	private stop_language_server() {
+		this.headlessProcess = null;
 		killSubProcesses("LSP");
 	}
 
-	private async start_language_server() {
+	private async start_language_server(): Promise<boolean> {
 		this.stop_language_server();
 
 		const projectDir = await get_project_dir();
 		if (!projectDir) {
 			vscode.window.showErrorMessage("Current workspace is not a Godot project");
-			return;
+			return false;
 		}
 
 		const projectVersion = await get_project_version();
+		if (!projectVersion) {
+			vscode.window.showErrorMessage("Current workspace is not a Godot project");
+			return false;
+		}
+
 		let minimumVersion = "6";
 		let targetVersion = "3.6";
 		if (projectVersion.startsWith("4")) {
@@ -168,17 +198,18 @@ export class ClientConnectionManager {
 			case "WRONG_VERSION": {
 				const message = `Cannot launch headless LSP: The current project uses Godot v${projectVersion}, but the specified Godot executable is v${result.version}`;
 				prompt_for_godot_executable(message, settingName);
-				return;
+				return false;
 			}
 			case "INVALID_EXE": {
 				const message = `Cannot launch headless LSP: '${godotPath}' is not a valid Godot executable`;
 				prompt_for_godot_executable(message, settingName);
-				return;
+				return false;
 			}
 		}
 		this.connectedVersion = result.version;
 
-		if (result.version[2] < minimumVersion) {
+		const [, minorVersion = 0] = result.version.split(".").map(Number);
+		if (minorVersion < Number(minimumVersion)) {
 			const message = `Cannot launch headless LSP: Headless LSP mode is only available on v${targetVersion} or newer, but the specified Godot executable is v${result.version}.`;
 			vscode.window
 				.showErrorMessage(message, "Select Godot executable", "Open Settings", "Disable Headless LSP", "Ignore")
@@ -192,7 +223,7 @@ export class ClientConnectionManager {
 						prompt_for_reload();
 					}
 				});
-			return;
+			return false;
 		}
 
 		this.client.port = await get_free_port();
@@ -202,6 +233,7 @@ export class ClientConnectionManager {
 		const headlessFlags = "--headless --no-window";
 		const command = `"${godotPath}" --path "${projectDir}" --editor ${headlessFlags} --lsp-port ${this.client.port}`;
 		const lspProcess = subProcess("LSP", command, { shell: true, detached: true });
+		this.headlessProcess = lspProcess;
 
 		const lspStdout = createLogger("lsp.stdout");
 		lspProcess.stdout.on("data", (data) => {
@@ -221,7 +253,61 @@ export class ClientConnectionManager {
 
 		lspProcess.on("close", (code) => {
 			log.info(`LSP process exited with code ${code}`);
+			if (this.headlessProcess !== lspProcess) {
+				return;
+			}
+			this.headlessProcess = null;
+			if (!this.isDisposing && this.target === TargetLSP.HEADLESS) {
+				this.restart_headless_language_server();
+			}
 		});
+
+		return true;
+	}
+
+	private async should_create_lsp_for_workspace(): Promise<boolean> {
+		if (!get_configuration("lsp.autoDetectGodotProject", true)) {
+			return true;
+		}
+
+		const projectDir = await get_project_dir();
+		if (projectDir) {
+			return true;
+		}
+
+		log.info("Skipping LSP startup because no project.godot was found in this workspace");
+		return false;
+	}
+
+	private async restart_headless_language_server() {
+		if (this.headlessRestartInProgress || this.isDisposing) {
+			return;
+		}
+
+		this.headlessRestartInProgress = true;
+		this.cancelRetry();
+		set_context("connectedToLSP", false);
+		this.lspDisconnected.fire();
+		this.status = ManagerStatus.INITIALIZING_LSP;
+		this.statusChanged.fire(this.status);
+		this.update_status_widget();
+
+		try {
+			await this.create_new_client();
+			this.target = TargetLSP.HEADLESS;
+			this.reconnectionAttempts = 0;
+			const started = await this.start_language_server();
+			if (!started) {
+				this.status = ManagerStatus.DISCONNECTED;
+				this.statusChanged.fire(this.status);
+				this.update_status_widget();
+				return;
+			}
+		} finally {
+			this.headlessRestartInProgress = false;
+		}
+
+		this.client.connect(this.target);
 	}
 
 	private get_lsp_connection_string() {
@@ -269,6 +355,11 @@ export class ClientConnectionManager {
 			case ManagerStatus.WRONG_WORKSPACE:
 				this.retry_connect_client();
 				break;
+			case ManagerStatus.NOT_GODOT_PROJECT:
+				vscode.window.showInformationMessage(
+					"Godot LSP was not started because this workspace does not contain a project.godot file.",
+				);
+				break;
 		}
 	}
 
@@ -315,6 +406,10 @@ export class ClientConnectionManager {
 				text = "$(x) Wrong Project";
 				tooltip = "Disconnected from the GDScript language server.";
 				break;
+			case ManagerStatus.NOT_GODOT_PROJECT:
+				text = "$(circle-slash) No Godot Project";
+				tooltip = "Godot LSP was not started because this workspace does not contain a project.godot file.";
+				break;
 			case ManagerStatus.INITIALIZING_CLIENT:
 				text = "$(sync~spin) Initializing...";
 				tooltip = `Initializing LSP connection to ${lspTarget}`;
@@ -355,6 +450,7 @@ export class ClientConnectionManager {
 						// Now we're fully connected
 						this.retry = false;
 						this.reconnectionAttempts = 0;
+						this.headlessPortRestartAttempts = 0;
 						set_context("connectedToLSP", true);
 						this.status = ManagerStatus.CONNECTED;
 						this.lspReady.fire();
@@ -363,6 +459,7 @@ export class ClientConnectionManager {
 						// Still set connected but some features may be limited
 						this.retry = false;
 						this.reconnectionAttempts = 0;
+						this.headlessPortRestartAttempts = 0;
 						set_context("connectedToLSP", true);
 						this.status = ManagerStatus.CONNECTED;
 						this.lspReady.fire();
@@ -371,6 +468,7 @@ export class ClientConnectionManager {
 					// Client already started, just update status
 					this.retry = false;
 					this.reconnectionAttempts = 0;
+					this.headlessPortRestartAttempts = 0;
 					set_context("connectedToLSP", true);
 					this.status = ManagerStatus.CONNECTED;
 				}
@@ -379,6 +477,11 @@ export class ClientConnectionManager {
 				// Fire disconnected event BEFORE creating new client so providers can reset
 				set_context("connectedToLSP", false);
 				this.lspDisconnected.fire();
+
+				if (this.headlessRestartInProgress && this.target === TargetLSP.HEADLESS) {
+					this.status = ManagerStatus.INITIALIZING_LSP;
+					break;
+				}
 
 				// Disconnection is unrecoverable, since the server will not know that the reconnected client is the same.
 				// Create a new client with a clean state to prevent de-sync e.g. of client managed files.
@@ -493,6 +596,18 @@ export class ClientConnectionManager {
 		const maxAttempts = get_configuration("lsp.autoReconnect.attempts");
 
 		if (!autoRetry || this.reconnectionAttempts >= maxAttempts) {
+			if (
+				this.target === TargetLSP.HEADLESS &&
+				this.headlessPortRestartAttempts < ClientConnectionManager.MAX_HEADLESS_PORT_RESTARTS
+			) {
+				this.headlessPortRestartAttempts++;
+				log.warn(
+					`Headless LSP did not accept connections after ${this.reconnectionAttempts} attempts; restarting with a fresh port (${this.headlessPortRestartAttempts}/${ClientConnectionManager.MAX_HEADLESS_PORT_RESTARTS})`,
+				);
+				this.restart_headless_language_server();
+				return;
+			}
+
 			this.retry = false;
 			this.status = ManagerStatus.DISCONNECTED;
 			this.update_status_widget();
@@ -515,6 +630,18 @@ export class ClientConnectionManager {
 		const maxAttempts = get_configuration("lsp.autoReconnect.attempts");
 
 		if (!autoRetry || this.reconnectionAttempts >= maxAttempts) {
+			if (
+				this.target === TargetLSP.HEADLESS &&
+				this.headlessPortRestartAttempts < ClientConnectionManager.MAX_HEADLESS_PORT_RESTARTS
+			) {
+				this.headlessPortRestartAttempts++;
+				log.warn(
+					`Headless LSP retry limit reached; restarting with a fresh port (${this.headlessPortRestartAttempts}/${ClientConnectionManager.MAX_HEADLESS_PORT_RESTARTS})`,
+				);
+				this.restart_headless_language_server();
+				return;
+			}
+
 			this.retry = false;
 			this.status = ManagerStatus.DISCONNECTED;
 			this.update_status_widget();
@@ -547,5 +674,22 @@ export class ClientConnectionManager {
 				this.connect_to_language_server();
 			}
 		});
+	}
+
+	public async dispose() {
+		this.isDisposing = true;
+		this.cancelRetry();
+		set_context("connectedToLSP", false);
+		this.lspDisconnected.fire();
+		this.stop_language_server();
+
+		if (this.client) {
+			this.client.disposeClient();
+			try {
+				await this.client.dispose();
+			} catch (e) {
+				log.warn("Error disposing LSP client during shutdown:", e);
+			}
+		}
 	}
 }

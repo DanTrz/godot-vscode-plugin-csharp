@@ -154,12 +154,9 @@ async function initial_setup() {
 	}
 }
 
-export function deactivate(): Thenable<void> {
-	return new Promise<void>((resolve, reject) => {
-		globals.dotnetWatch?.stop();
-		globals.lsp.client.stop();
-		resolve();
-	});
+export async function deactivate(): Promise<void> {
+	globals.dotnetWatch?.stop();
+	await globals.lsp?.dispose();
 }
 
 async function copy_resource_path(uri: vscode.Uri) {

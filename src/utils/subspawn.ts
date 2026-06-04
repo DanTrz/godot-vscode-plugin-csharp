@@ -10,17 +10,17 @@ import { createLogger } from ".";
 
 const log = createLogger("subspawn");
 
-interface DictionaryOfStringChildProcessArray {
-	[key: string]: ChildProcess[];
+interface DictionaryOfStringChildProcessSet {
+	[key: string]: Set<ChildProcess>;
 }
-const children: DictionaryOfStringChildProcessArray = {};
+const children: DictionaryOfStringChildProcessSet = {};
 
 export function killSubProcesses(owner: string) {
 	if (!(owner in children)) {
 		return;
 	}
 
-	for (const c of children[owner]) {
+	for (const c of Array.from(children[owner])) {
 		try {
 			if (c.pid) {
 				if (process.platform === "win32") {
@@ -36,7 +36,7 @@ export function killSubProcesses(owner: string) {
 		}
 	}
 
-	children[owner] = [];
+	children[owner].clear();
 }
 
 process.on("exit", () => {
@@ -58,8 +58,14 @@ process.on("SIGQUIT", gracefulExitHandler);
 export function subProcess(owner: string, command: string, options?: SpawnOptions) {
 	const childProcess = spawn(command, options);
 
-	children[owner] = children[owner] || [];
-	children[owner].push(childProcess);
+	children[owner] = children[owner] || new Set<ChildProcess>();
+	children[owner].add(childProcess);
+
+	const cleanup = () => {
+		children[owner]?.delete(childProcess);
+	};
+	childProcess.once("exit", cleanup);
+	childProcess.once("close", cleanup);
 
 	return childProcess;
 }

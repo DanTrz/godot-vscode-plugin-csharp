@@ -2,7 +2,7 @@
 	"name": "godot-tools",
 	"displayName": "Godot Tools C# (Fork)",
 	"icon": "icon.png",
-	"version": "2.6.3+csharp.1",
+	"version": "2.6.3+csharp.2",
 	"description": "C# Enhanced Fork by DanTrz, based on the original godot-tools plugin - based on 2.6.0",
 	"repository": {
 		"type": "git",
@@ -378,6 +378,11 @@
 					"type": "boolean",
 					"default": false,
 					"description": "Whether to launch the LSP as a headless child process"
+				},
+				"godotTools.lsp.autoDetectGodotProject": {
+					"type": "boolean",
+					"default": true,
+					"description": "Only start or connect the Godot LSP when the workspace contains a project.godot file. Disable to keep the previous always-attempt behavior."
 				},
 				"godotTools.lsp.autoReconnect.enabled": {
 					"type": "boolean",

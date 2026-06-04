@@ -4,6 +4,20 @@ A fork of [godot-vscode-plugin](https://github.com/godotengine/godot-vscode-plug
 
 ---
 
+## Headless LSP Behavior
+
+When `godotTools.lsp.headless` is enabled, each VS Code window starts its own headless Godot LSP process for the opened workspace. Opening the same Godot project in multiple VS Code windows can therefore create multiple headless Godot processes.
+
+By default, the extension only starts or connects the Godot LSP when the workspace contains a `project.godot` file. This avoids spawning Godot LSP processes for plain C#, JavaScript, C++, or other non-Godot folders. You can opt out and keep the previous always-attempt behavior with:
+
+```json
+"godotTools.lsp.autoDetectGodotProject": false
+```
+
+The detection signal is `project.godot`, which is Godot's canonical project file.
+
+---
+
 ## 🎯 Key Features
 
 ### 1. C# Drag & Drop Code Generation
