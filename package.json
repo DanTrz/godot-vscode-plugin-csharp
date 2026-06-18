@@ -2,7 +2,7 @@
 	"name": "godot-tools-csharp",
 	"displayName": "Godot Tools C#",
 	"icon": "icon.png",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "C# enhanced tooling for Godot — LSP, debugging, scene preview, drag & drop. Based on godot-tools",
 	"repository": {
 		"type": "git",
