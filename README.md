@@ -1,6 +1,6 @@
-# Godot Tools C#
+# Godot Tools Enhanced CSharp
 
-C# enhanced tooling for Godot 4 development. Based on [godot-vscode-plugin](https://github.com/godotengine/godot-vscode-plugin) (`godot-tools`), with additional C# features.
+Enhanced Godot 4 tooling with full C# support. Based on [godot-vscode-plugin](https://github.com/godotengine/godot-vscode-plugin) (`godot-tools`), with additional C# features.
 
 ---
 
@@ -66,8 +66,8 @@ IMPORTANT: YOU MUST Rebuild from within VSCode before going back to Godot.
 Set your preferred styles in VS Code settings:
 
 ```
-Settings > Godot Tools > C# > Node Reference Style
-Settings > Godot Tools > C# > Secondary Node Reference Style
+Settings > Godot Tools Enhanced CSharp > C# > Node Reference Style
+Settings > Godot Tools Enhanced CSharp > C# > Secondary Node Reference Style
 ```
 
 Or in `settings.json`:
@@ -192,7 +192,7 @@ In `settings.json`:
 "godotToolsCsharp.csharp.dotnetWatch": true
 ```
 
-Or: `Settings > Godot Tools > C# > Dotnet Watch`
+Or: `Settings > Godot Tools Enhanced CSharp > C# > Dotnet Watch`
 
 > **Tip:** With `dotnet watch` enabled, you can skip clicking "Rebuild" after drag-and-drop — just save your `.cs` file and the rebuild happens automatically.
 

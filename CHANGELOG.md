@@ -2,7 +2,7 @@
 
 ### 1.0.0
 
-First standalone release of **Godot Tools C#** on the Visual Studio Marketplace
+First standalone release of **Godot Tools Enhanced CSharp** on the Visual Studio Marketplace
 (extension ID `dantrz.godot-tools-csharp`), previously distributed as a fork of
 `godot-tools`. Versioning restarts at `1.0.0` as an independent extension; the
 codebase is based on godot-tools 2.6.x.
