@@ -89,6 +89,39 @@ export class GDDocumentationProvider implements CustomReadonlyEditorProvider {
 		return { uri: uri, dispose: () => {} };
 	}
 
+	/**
+	 * Fallback page shown when class documentation can't be loaded because the
+	 * Godot language server hasn't delivered its class capabilities (LSP down,
+	 * still connecting, or in a degraded state). Avoids hanging the editor on a
+	 * blank/spinning panel forever.
+	 */
+	private make_unavailable_html(className: string): string {
+		const safeClassName = className.replace(/[&<>"']/g, (c) => {
+			return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+		});
+		return `<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<style>
+		body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); padding: 2rem; line-height: 1.5; }
+		h2 { margin-top: 0; }
+		code { background: var(--vscode-textCodeBlock-background); padding: 0.1rem 0.3rem; border-radius: 3px; }
+		.hint { color: var(--vscode-descriptionForeground); }
+	</style>
+</head>
+<body>
+	<h2>Documentation unavailable</h2>
+	<p>Godot documentation for <code>${safeClassName}</code> isn't available yet because the
+	GDScript language server hasn't sent its class data.</p>
+	<p class="hint">This usually means the language server is still connecting, is offline, or
+	connected without class capabilities. Reopen this page once the LSP is connected
+	(check the Godot LSP status in the status bar).</p>
+</body>
+</html>`;
+	}
+
 	public async resolveCustomEditor(
 		document: CustomDocument,
 		panel: WebviewPanel,
@@ -102,8 +135,19 @@ export class GDDocumentationProvider implements CustomReadonlyEditorProvider {
 			enableScripts: true,
 		};
 
-		while (!this.ready) {
-			await new Promise((resolve) => setTimeout(resolve, 100));
+		// Wait for LSP class capabilities to be available, but never block forever.
+		// The manager settles early if the connection is degraded/disconnected (so we
+		// don't sit through the full timeout for capabilities that will never arrive),
+		// and honors the cancellation token (e.g. the user closes this tab).
+		if (!this.ready) {
+			// Keep this in line with the LSP capabilities window in ClientConnectionManager.
+			const ready = await globals.lsp.waitForCapabilitiesReady(30000, token);
+			if (!ready || !this.ready) {
+				if (!token.isCancellationRequested) {
+					panel.webview.html = this.make_unavailable_html(className);
+				}
+				return;
+			}
 		}
 
 		symbol = this.symbolDb.get(className);

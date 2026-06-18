@@ -26,6 +26,7 @@
 		"Other"
 	],
 	"activationEvents": [
+		"onStartupFinished",
 		"workspaceContains:project.godot",
 		"onDebugResolve:godot"
 	],

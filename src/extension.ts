@@ -125,7 +125,7 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 async function initial_setup() {
-	const projectVersion = await get_project_version();
+	const projectVersion = get_configuration("lsp.autoDetectGodotProject", true) ? await get_project_version() : "4.x";
 	if (projectVersion === undefined) {
 		// TODO: actually handle this?
 		return;

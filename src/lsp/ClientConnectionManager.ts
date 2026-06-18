@@ -30,6 +30,7 @@ export enum ManagerStatus {
 	WRONG_WORKSPACE = 7,
 	INITIALIZING_CLIENT = 8,  // After socket connect, before LSP handshake completes
 	NOT_GODOT_PROJECT = 9,
+	DEGRADED = 10,  // Connected at the socket/LSP level, but capabilities never arrived (e.g. timeout)
 }
 
 export class ClientConnectionManager {
@@ -57,6 +58,8 @@ export class ClientConnectionManager {
 	private headlessProcess: ChildProcess | null = null;
 	private headlessRestartInProgress = false;
 	private headlessPortRestartAttempts = 0;
+	private headlessExecutablePath = "";
+	private headlessProjectDir = "";
 	private isDisposing = false;
 
 	private connectedVersion = "";
@@ -137,6 +140,8 @@ export class ClientConnectionManager {
 		this.client.port = -1;
 		this.target = TargetLSP.EDITOR;
 		this.connectedVersion = undefined;
+		this.headlessExecutablePath = "";
+		this.headlessProjectDir = "";
 
 		if (!(await this.should_create_lsp_for_workspace())) {
 			this.status = ManagerStatus.NOT_GODOT_PROJECT;
@@ -148,11 +153,11 @@ export class ClientConnectionManager {
 
 		if (get_configuration("lsp.headless")) {
 			this.target = TargetLSP.HEADLESS;
+			this.status = ManagerStatus.INITIALIZING_LSP;
+			this.statusChanged.fire(this.status);
+			this.update_status_widget();
 			const started = await this.start_language_server();
 			if (!started) {
-				this.status = ManagerStatus.DISCONNECTED;
-				this.statusChanged.fire(this.status);
-				this.update_status_widget();
 				return;
 			}
 		}
@@ -164,21 +169,36 @@ export class ClientConnectionManager {
 
 	private stop_language_server() {
 		this.headlessProcess = null;
+		this.headlessExecutablePath = "";
+		this.headlessProjectDir = "";
 		killSubProcesses("LSP");
 	}
 
 	private async start_language_server(): Promise<boolean> {
 		this.stop_language_server();
 
-		const projectDir = await get_project_dir();
+		const autoDetectGodotProject = get_configuration("lsp.autoDetectGodotProject", true);
+		const detectedProjectDir = await get_project_dir();
+		let projectDir = detectedProjectDir;
 		if (!projectDir) {
-			vscode.window.showErrorMessage("Current workspace is not a Godot project");
-			return false;
-		}
+			if (autoDetectGodotProject || !vscode.workspace.workspaceFolders?.[0]) {
+				this.status = ManagerStatus.NOT_GODOT_PROJECT;
+				this.statusChanged.fire(this.status);
+				this.update_status_widget();
+				vscode.window.showErrorMessage("Cannot start Headless Godot LSP: current workspace is not a Godot project.");
+				return false;
+			}
 
-		const projectVersion = await get_project_version();
+			projectDir = vscode.workspace.workspaceFolders[0].uri.fsPath;
+		}
+		this.headlessProjectDir = projectDir;
+
+		const projectVersion = autoDetectGodotProject ? await get_project_version() ?? "4.x" : "4.x";
 		if (!projectVersion) {
-			vscode.window.showErrorMessage("Current workspace is not a Godot project");
+			this.status = ManagerStatus.NOT_GODOT_PROJECT;
+			this.statusChanged.fire(this.status);
+			this.update_status_widget();
+			vscode.window.showErrorMessage("Cannot start Headless Godot LSP: current workspace is not a Godot project.");
 			return false;
 		}
 
@@ -197,20 +217,30 @@ export class ClientConnectionManager {
 		switch (result.status) {
 			case "WRONG_VERSION": {
 				const message = `Cannot launch headless LSP: The current project uses Godot v${projectVersion}, but the specified Godot executable is v${result.version}`;
+				this.status = ManagerStatus.DISCONNECTED;
+				this.statusChanged.fire(this.status);
+				this.update_status_widget();
 				prompt_for_godot_executable(message, settingName);
 				return false;
 			}
 			case "INVALID_EXE": {
 				const message = `Cannot launch headless LSP: '${godotPath}' is not a valid Godot executable`;
+				this.status = ManagerStatus.DISCONNECTED;
+				this.statusChanged.fire(this.status);
+				this.update_status_widget();
 				prompt_for_godot_executable(message, settingName);
 				return false;
 			}
 		}
 		this.connectedVersion = result.version;
+		this.headlessExecutablePath = godotPath;
 
 		const [, minorVersion = 0] = result.version.split(".").map(Number);
 		if (minorVersion < Number(minimumVersion)) {
 			const message = `Cannot launch headless LSP: Headless LSP mode is only available on v${targetVersion} or newer, but the specified Godot executable is v${result.version}.`;
+			this.status = ManagerStatus.DISCONNECTED;
+			this.statusChanged.fire(this.status);
+			this.update_status_widget();
 			vscode.window
 				.showErrorMessage(message, "Select Godot executable", "Open Settings", "Disable Headless LSP", "Ignore")
 				.then((item) => {
@@ -319,6 +349,34 @@ export class ClientConnectionManager {
 		return `${host}:${port}`;
 	}
 
+	private get_lsp_mode_label() {
+		return this.target === TargetLSP.HEADLESS ? "Headless Godot LSP" : "Godot Editor LSP";
+	}
+
+	private get_lsp_connection_details() {
+		const lines = [
+			`Mode: ${this.get_lsp_mode_label()}`,
+			`Address: ${this.get_lsp_connection_string()}`,
+		];
+
+		if (this.connectedVersion) {
+			lines.push(`Godot version: ${this.connectedVersion}`);
+		}
+
+		if (this.target === TargetLSP.HEADLESS) {
+			if (this.headlessProjectDir) {
+				lines.push(`Project: ${this.headlessProjectDir}`);
+			}
+			if (this.headlessExecutablePath) {
+				lines.push(`Executable: ${this.headlessExecutablePath}`);
+			}
+		} else {
+			lines.push("Source: Godot editor language server");
+		}
+
+		return lines.join("\n");
+	}
+
 	private on_status_item_click() {
 		const lspTarget = this.get_lsp_connection_string();
 		// TODO: fill these out with the ACTIONS a user could perform in each state
@@ -332,8 +390,13 @@ export class ClientConnectionManager {
 			case ManagerStatus.PENDING:
 				// vscode.window.showInformationMessage(`Connecting to the GDScript language server at ${lspTarget}`);
 				break;
-			case ManagerStatus.CONNECTED: {
-				const message = `Connected to the GDScript language server at ${lspTarget}.`;
+			case ManagerStatus.CONNECTED:
+			case ManagerStatus.DEGRADED: {
+				const header =
+					this.status === ManagerStatus.DEGRADED
+						? `Connected to ${this.get_lsp_mode_label()}, but class documentation capabilities did not arrive. Some features may be unavailable.`
+						: `Connected to ${this.get_lsp_mode_label()}.`;
+				const message = `${header}\n${this.get_lsp_connection_details()}`;
 
 				let options = ["Ok"];
 				if (this.target === TargetLSP.HEADLESS) {
@@ -385,11 +448,12 @@ export class ClientConnectionManager {
 				tooltip = `Connecting to the GDScript language server at ${lspTarget}`;
 				break;
 			case ManagerStatus.CONNECTED:
-				text = "$(check) Connected";
-				tooltip = `Connected to the GDScript language server.\n${lspTarget}`;
-				if (this.connectedVersion) {
-					tooltip += `\nGodot version: ${this.connectedVersion}`;
-				}
+				text = this.target === TargetLSP.HEADLESS ? "$(check) Headless LSP" : "$(check) Editor LSP";
+				tooltip = `Connected to ${this.get_lsp_mode_label()}.\n${this.get_lsp_connection_details()}`;
+				break;
+			case ManagerStatus.DEGRADED:
+				text = "$(warning) LSP Degraded";
+				tooltip = `Connected to ${this.get_lsp_mode_label()}, but class documentation capabilities did not arrive. Some features (e.g. Godot docs) are unavailable.\n${this.get_lsp_connection_details()}`;
 				break;
 			case ManagerStatus.DISCONNECTED:
 				text = "$(x) Disconnected";
@@ -456,12 +520,17 @@ export class ClientConnectionManager {
 						this.lspReady.fire();
 					} catch (error) {
 						log.warn(`LSP initialization issue: ${error.message}`);
-						// Still set connected but some features may be limited
+						// The socket/LSP handshake succeeded but capabilities never arrived
+						// (e.g. timeout). Editor-side LSP features that don't depend on class
+						// capabilities can still work, so keep connectedToLSP=true and fire
+						// lspReady for non-capabilities consumers. But mark the status DEGRADED
+						// so capabilities-dependent features (docs) can tell the difference
+						// instead of waiting forever on a connection that will never be ready.
 						this.retry = false;
 						this.reconnectionAttempts = 0;
 						this.headlessPortRestartAttempts = 0;
 						set_context("connectedToLSP", true);
-						this.status = ManagerStatus.CONNECTED;
+						this.status = ManagerStatus.DEGRADED;
 						this.lspReady.fire();
 					}
 				} else {
@@ -525,6 +594,61 @@ export class ClientConnectionManager {
 			this.capabilitiesResolver();
 			this.capabilitiesResolver = null;
 		}
+	}
+
+	/**
+	 * Resolve as soon as LSP class capabilities are available. Used by the docs
+	 * provider so it can wait deterministically instead of polling a flag forever.
+	 *
+	 * Settles `true` when capabilities arrive. Settles `false` (without waiting the
+	 * full timeout) if the connection is already DEGRADED — capabilities will not
+	 * arrive on that connection — on disconnect, or after `timeoutMs` elapses.
+	 *
+	 * @param timeoutMs Maximum time to wait before giving up.
+	 * @param token Optional cancellation token; settles `false` when cancelled.
+	 */
+	public waitForCapabilitiesReady(
+		timeoutMs: number,
+		token?: vscode.CancellationToken,
+	): Promise<boolean> {
+		// Fast paths: capabilities already here, or this connection can never deliver them.
+		if (this.capabilitiesReceived) {
+			return Promise.resolve(true);
+		}
+		if (this.status === ManagerStatus.DEGRADED) {
+			return Promise.resolve(false);
+		}
+
+		return new Promise<boolean>((resolve) => {
+			const disposables: vscode.Disposable[] = [];
+			let settled = false;
+			const settle = (value: boolean) => {
+				if (settled) {
+					return;
+				}
+				settled = true;
+				clearTimeout(timeoutId);
+				for (const d of disposables) {
+					d.dispose();
+				}
+				resolve(value);
+			};
+
+			const timeoutId = setTimeout(() => settle(this.capabilitiesReceived), timeoutMs);
+
+			disposables.push(this.onLSPReady(() => settle(this.capabilitiesReceived)));
+			disposables.push(this.onLSPDisconnected(() => settle(false)));
+			disposables.push(
+				this.onStatusChanged((status) => {
+					if (status === ManagerStatus.DEGRADED) {
+						settle(false);
+					}
+				}),
+			);
+			if (token) {
+				disposables.push(token.onCancellationRequested(() => settle(false)));
+			}
+		});
 	}
 
 	/**
