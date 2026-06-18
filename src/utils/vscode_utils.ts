@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { globals } from "../extension";
 
-const EXTENSION_PREFIX = "godotTools";
+const EXTENSION_PREFIX = "godotToolsCsharp";
 
 export function get_configuration(name: string, defaultValue?: any) {
 	const configValue = vscode.workspace.getConfiguration(EXTENSION_PREFIX).get(name, null);
@@ -26,5 +26,5 @@ export function register_command(command: string, callback: (...args: any[]) => 
 }
 
 export function get_extension_uri(...paths: string[]) {
-	return vscode.Uri.joinPath(vscode.extensions.getExtension("geequlim.godot-tools").extensionUri, ...paths ?? "");
+	return vscode.Uri.joinPath(vscode.extensions.getExtension("dantrz.godot-tools-csharp").extensionUri, ...paths ?? "");
 }

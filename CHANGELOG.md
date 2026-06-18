@@ -1,5 +1,27 @@
 # Changelog
 
+### 1.0.0
+
+First standalone release of **Godot Tools C#** on the Visual Studio Marketplace
+(extension ID `dantrz.godot-tools-csharp`), previously distributed as a fork of
+`godot-tools`. Versioning restarts at `1.0.0` as an independent extension; the
+codebase is based on godot-tools 2.6.x.
+
+**Highlights (carried over from the C# fork):**
+- **C# Drag & Drop code generation** — drag nodes from Scene Preview into `.cs` scripts
+- **Active Scene Tree & Node Inspector for C# debugging** — live tree + property inspection
+- **Live Property Editing** — modify node properties at runtime
+- **Advanced Debug Controls** — Pause/Resume and Frame Stepping from VS Code
+- **Scene Preview & Inspector** rebuilt as WebView-based UIs with search/filter
+- **Improved LSP reconnection** — exponential backoff, TCP keepalive, deep cleanup
+- **Auto-detect Godot project** before starting the LSP
+
+*Based on [godot-vscode-plugin](https://github.com/godotengine/godot-vscode-plugin) (`godot-tools`) by the Godot Engine community.*
+
+---
+
+## Pre-1.0.0 fork history (as `geequlim.godot-tools` fork builds)
+
 ### 2.5.3+csharp.1 (C# Fork)
 
 **New Features:**

@@ -1,15 +1,15 @@
 import * as vscode from "vscode";
 
 const OLD_SETTINGS_CONVERSIONS = [
-	["godot_tools.editor_path", "godotTools.editorPath.godot3"],
-	["godot_tools.editor_path", "godotTools.editorPath.godot4"],
-	["godot_tools.gdscript_lsp_server_protocol", "godotTools.lsp.serverProtocol"],
-	["godot_tools.gdscript_lsp_server_host", "godotTools.lsp.serverHost"],
-	["godot_tools.gdscript_lsp_server_port", "godotTools.lsp.serverPort"],
-	["godot_tools.reconnect_automatically", "godotTools.lsp.autoReconnect.enabled"],
-	["godot_tools.reconnect_cooldown", "godotTools.lsp.autoReconnect.cooldown"],
-	["godot_tools.reconnect_attempts", "godotTools.lsp.autoReconnect.attempts"],
-	["godot_tools.scenePreview.previewRelatedScenes", "godotTools.scenePreview.previewRelatedScenes"]
+	["godot_tools.editor_path", "godotToolsCsharp.editorPath.godot3"],
+	["godot_tools.editor_path", "godotToolsCsharp.editorPath.godot4"],
+	["godot_tools.gdscript_lsp_server_protocol", "godotToolsCsharp.lsp.serverProtocol"],
+	["godot_tools.gdscript_lsp_server_host", "godotToolsCsharp.lsp.serverHost"],
+	["godot_tools.gdscript_lsp_server_port", "godotToolsCsharp.lsp.serverPort"],
+	["godot_tools.reconnect_automatically", "godotToolsCsharp.lsp.autoReconnect.enabled"],
+	["godot_tools.reconnect_cooldown", "godotToolsCsharp.lsp.autoReconnect.cooldown"],
+	["godot_tools.reconnect_attempts", "godotToolsCsharp.lsp.autoReconnect.attempts"],
+	["godot_tools.scenePreview.previewRelatedScenes", "godotToolsCsharp.scenePreview.previewRelatedScenes"]
 ];
 
 export function updateOldStyleSettings() {

@@ -16,7 +16,7 @@ export class GameDebugControlsProvider implements TreeDataProvider<DebugControlI
 	private _isPaused = false;
 
 	constructor() {
-		this.view = window.createTreeView("godotTools.gameDebugControls", {
+		this.view = window.createTreeView("godotToolsCsharp.gameDebugControls", {
 			treeDataProvider: this,
 		});
 	}
@@ -69,7 +69,7 @@ export class GameDebugControlsProvider implements TreeDataProvider<DebugControlI
 					TreeItemCollapsibleState.None,
 					new ThemeIcon("debug-continue"),
 					{
-						command: "godotTools.debugger.resume",
+						command: "godotToolsCsharp.debugger.resume",
 						title: "Resume Game"
 					}
 				));
@@ -81,7 +81,7 @@ export class GameDebugControlsProvider implements TreeDataProvider<DebugControlI
 					TreeItemCollapsibleState.None,
 					new ThemeIcon("debug-step-over"),
 					{
-						command: "godotTools.debugger.nextFrame",
+						command: "godotToolsCsharp.debugger.nextFrame",
 						title: "Next Frame"
 					}
 				));
@@ -93,7 +93,7 @@ export class GameDebugControlsProvider implements TreeDataProvider<DebugControlI
 					TreeItemCollapsibleState.None,
 					new ThemeIcon("debug-pause"),
 					{
-						command: "godotTools.debugger.pause",
+						command: "godotToolsCsharp.debugger.pause",
 						title: "Pause Game"
 					}
 				));

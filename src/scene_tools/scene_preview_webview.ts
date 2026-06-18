@@ -42,7 +42,7 @@ interface SerializedNode {
  * Replaces the native TreeDataProvider with a rich WebView UI.
  */
 export class ScenePreviewWebviewProvider implements vscode.WebviewViewProvider {
-	public static readonly viewType = "godotTools.scenePreview";
+	public static readonly viewType = "godotToolsCsharp.scenePreview";
 
 	private view?: vscode.WebviewView;
 	private viewReady = false;
@@ -75,7 +75,7 @@ export class ScenePreviewWebviewProvider implements vscode.WebviewViewProvider {
 
 		// Restore locked scene from workspace state
 		const lockedScene: string | undefined = this.context.workspaceState.get(
-			"godotTools.scenePreview.lockedScene"
+			"godotToolsCsharp.scenePreview.lockedScene"
 		);
 		if (lockedScene && fs.existsSync(lockedScene)) {
 			set_context("scenePreview.locked", true);
@@ -137,7 +137,7 @@ export class ScenePreviewWebviewProvider implements vscode.WebviewViewProvider {
 				// Handled in WebView, no action needed
 				break;
 			case "rebuildCSharp":
-				vscode.commands.executeCommand("godotTools.rebuildCSharp");
+				vscode.commands.executeCommand("godotToolsCsharp.rebuildCSharp");
 				break;
 		}
 	}
@@ -309,7 +309,7 @@ export class ScenePreviewWebviewProvider implements vscode.WebviewViewProvider {
 		}
 		this.currentScene = fsPath;
 		if (this.scenePreviewLocked) {
-			this.context.workspaceState.update("godotTools.scenePreview.lockedScene", fsPath);
+			this.context.workspaceState.update("godotToolsCsharp.scenePreview.lockedScene", fsPath);
 		}
 		this.refresh();
 	}
@@ -414,14 +414,14 @@ export class ScenePreviewWebviewProvider implements vscode.WebviewViewProvider {
 	private lock_preview(): void {
 		this.scenePreviewLocked = true;
 		set_context("scenePreview.locked", true);
-		this.context.workspaceState.update("godotTools.scenePreview.lockedScene", this.currentScene);
+		this.context.workspaceState.update("godotToolsCsharp.scenePreview.lockedScene", this.currentScene);
 		this.postMessage({ type: "lockStateChanged", locked: true });
 	}
 
 	private unlock_preview(): void {
 		this.scenePreviewLocked = false;
 		set_context("scenePreview.locked", false);
-		this.context.workspaceState.update("godotTools.scenePreview.lockedScene", "");
+		this.context.workspaceState.update("godotToolsCsharp.scenePreview.lockedScene", "");
 		this.postMessage({ type: "lockStateChanged", locked: false });
 		this.refresh();
 	}

@@ -39,7 +39,7 @@ interface SerializedProperty {
  * Provides inline editing for property values.
  */
 export class InspectorWebView implements vscode.WebviewViewProvider {
-	public static readonly viewType = "godotTools.nodeInspector";
+	public static readonly viewType = "godotToolsCsharp.nodeInspector";
 
 	private view?: vscode.WebviewView;
 	private viewReady = false; // Track if view is resolved and ready for messages

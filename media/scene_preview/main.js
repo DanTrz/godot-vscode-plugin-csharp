@@ -636,7 +636,7 @@
 			});
 
 			// Set the custom MIME type that DocumentDropEditProvider will read
-			e.dataTransfer.setData("application/vnd.code.tree.godotTools.scenePreview", dragData);
+			e.dataTransfer.setData("application/vnd.code.tree.godotToolsCsharp.scenePreview", dragData);
 			e.dataTransfer.setData("text/plain", node.label);
 			e.dataTransfer.effectAllowed = "copy";
 

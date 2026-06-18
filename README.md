@@ -1,17 +1,17 @@
-# Godot Tools C# (Fork)
+# Godot Tools C#
 
-A fork of [godot-vscode-plugin](https://github.com/godotengine/godot-vscode-plugin) with **C# enhancements** for Godot 4 development.
+C# enhanced tooling for Godot 4 development. Based on [godot-vscode-plugin](https://github.com/godotengine/godot-vscode-plugin) (`godot-tools`), with additional C# features.
 
 ---
 
 ## Headless LSP Behavior
 
-When `godotTools.lsp.headless` is enabled, each VS Code window starts its own headless Godot LSP process for the opened workspace. Opening the same Godot project in multiple VS Code windows can therefore create multiple headless Godot processes.
+When `godotToolsCsharp.lsp.headless` is enabled, each VS Code window starts its own headless Godot LSP process for the opened workspace. Opening the same Godot project in multiple VS Code windows can therefore create multiple headless Godot processes.
 
 By default, the extension only starts or connects the Godot LSP when the workspace contains a `project.godot` file. This avoids spawning Godot LSP processes for plain C#, JavaScript, C++, or other non-Godot folders. You can opt out and keep the previous always-attempt behavior with:
 
 ```json
-"godotTools.lsp.autoDetectGodotProject": false
+"godotToolsCsharp.lsp.autoDetectGodotProject": false
 ```
 
 The detection signal is `project.godot`, which is Godot's canonical project file.
@@ -72,8 +72,8 @@ Settings > Godot Tools > C# > Secondary Node Reference Style
 
 Or in `settings.json`:
 ```json
-"godotTools.csharp.nodeReferenceStyle": "exportPublic",
-"godotTools.csharp.secondaryNodeReferenceStyle": "lazyField"
+"godotToolsCsharp.csharp.nodeReferenceStyle": "exportPublic",
+"godotToolsCsharp.csharp.secondaryNodeReferenceStyle": "lazyField"
 ```
 
 Options: `exportPublic`, `exportPrivate`, `lazyField`, `expressionBodied`
@@ -103,7 +103,7 @@ The Scene Preview automatically shows the relevant scene when you're editing:
 
 Configure in `settings.json`:
 ```json
-"godotTools.scenePreview.previewRelatedScenes": "anyFolder"
+"godotToolsCsharp.scenePreview.previewRelatedScenes": "anyFolder"
 ```
 
 Options: `anyFolder`, `sameFolder`, `off`
@@ -154,9 +154,9 @@ View the **running scene tree** and **inspect node properties** during C# debugg
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `godotTools.sceneTreeMonitor.port` | `6007` | Port for Godot connection |
-| `godotTools.sceneTreeMonitor.autoStart` | `true` | Auto-start on C# debug |
-| `godotTools.sceneTreeMonitor.refreshInterval` | `500` | Refresh interval (ms) |
+| `godotToolsCsharp.sceneTreeMonitor.port` | `6007` | Port for Godot connection |
+| `godotToolsCsharp.sceneTreeMonitor.autoStart` | `true` | Auto-start on C# debug |
+| `godotToolsCsharp.sceneTreeMonitor.refreshInterval` | `500` | Refresh interval (ms) |
 
 ---
 
@@ -189,7 +189,7 @@ When enabled, the extension starts `dotnet watch build` in the background. Every
 
 In `settings.json`:
 ```json
-"godotTools.csharp.dotnetWatch": true
+"godotToolsCsharp.csharp.dotnetWatch": true
 ```
 
 Or: `Settings > Godot Tools > C# > Dotnet Watch`
@@ -219,7 +219,7 @@ Or: `Settings > Godot Tools > C# > Dotnet Watch`
 ### Scene Tree not populating?
 
 1. Check `--remote-debug tcp://127.0.0.1:6007` is in your launch.json args
-2. Verify port matches `godotTools.sceneTreeMonitor.port` setting
+2. Verify port matches `godotToolsCsharp.sceneTreeMonitor.port` setting
 3. Requires Godot 4.2+
 
 ### Drag & Drop not working?
