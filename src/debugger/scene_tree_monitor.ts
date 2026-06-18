@@ -47,7 +47,7 @@ export class SceneTreeMonitor {
 
 		// Status bar item
 		this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-		this.statusBarItem.command = "godotTools.sceneTreeMonitor.stop";
+		this.statusBarItem.command = "godotToolsCsharp.sceneTreeMonitor.stop";
 		this.updateStatusBar();
 
 		// Wire up events

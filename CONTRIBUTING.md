@@ -29,11 +29,11 @@ An example `workspace.code-workspace` file:
 		}
 	],
     "settings": {
-		"godotTools.editorPath.godot3": "godot3.dev.exe",
-		"godotTools.editorPath.godot4": "godot4.dev.exe",
-		// "godotTools.editorPath.godot4": "godot4.custom.exe"
-        // "godotTools.editorPath.godot4": "Godot_v4.1.1-stable_win64.exe",
-        "godotTools.lsp.headless": false
+		"godotToolsCsharp.editorPath.godot3": "godot3.dev.exe",
+		"godotToolsCsharp.editorPath.godot4": "godot4.dev.exe",
+		// "godotToolsCsharp.editorPath.godot4": "godot4.custom.exe"
+        // "godotToolsCsharp.editorPath.godot4": "Godot_v4.1.1-stable_win64.exe",
+        "godotToolsCsharp.lsp.headless": false
 	}
 }
 ```

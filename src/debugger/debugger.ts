@@ -396,7 +396,7 @@ export class GodotDebugger implements DebugAdapterDescriptorFactory, DebugConfig
 		}
 
 		// Check if auto-start is enabled (default: true)
-		const autoStart = workspace.getConfiguration("godotTools").get("sceneTreeMonitor.autoStart", true);
+		const autoStart = workspace.getConfiguration("godotToolsCsharp").get("sceneTreeMonitor.autoStart", true);
 		if (!autoStart) {
 			return;
 		}

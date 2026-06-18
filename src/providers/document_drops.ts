@@ -87,7 +87,7 @@ export class GDDocumentDropEditProvider implements DocumentDropEditProvider {
 		];
 		context.subscriptions.push(languages.registerDocumentDropEditProvider(dropEditSelector, this));
 		context.subscriptions.push(
-			vscode.commands.registerCommand("godotTools.rebuildCSharp", () => this.rebuildCSharp()),
+			vscode.commands.registerCommand("godotToolsCsharp.rebuildCSharp", () => this.rebuildCSharp()),
 		);
 	}
 
@@ -100,7 +100,7 @@ export class GDDocumentDropEditProvider implements DocumentDropEditProvider {
 		// log.debug("provideDocumentDropEdits", document, dataTransfer);
 
 		// Try to get data from the WebView-based Scene Preview first
-		const webviewData = dataTransfer.get("application/vnd.code.tree.godotTools.scenePreview");
+		const webviewData = dataTransfer.get("application/vnd.code.tree.godotToolsCsharp.scenePreview");
 		if (webviewData) {
 			return this.handleWebviewDrop(document, position, webviewData);
 		}
@@ -195,7 +195,7 @@ export class GDDocumentDropEditProvider implements DocumentDropEditProvider {
 				const line = document.lineAt(position.line);
 				if (line.text.trim() === "") {
 					// Empty line: use configured style for property declaration
-					const config = vscode.workspace.getConfiguration("godotTools.csharp");
+					const config = vscode.workspace.getConfiguration("godotToolsCsharp.csharp");
 					const styleKey = config.get<string>("nodeReferenceStyle", DEFAULT_CSHARP_STYLE);
 					const style = CSHARP_STYLE_OPTIONS[styleKey] || CSHARP_STYLE_OPTIONS[DEFAULT_CSHARP_STYLE];
 					const result = style.generator(className, propertyName, fieldName, nodePath);
@@ -318,7 +318,7 @@ export class GDDocumentDropEditProvider implements DocumentDropEditProvider {
 
 				const line = document.lineAt(position.line);
 				if (line.text.trim() === "") {
-					const config = vscode.workspace.getConfiguration("godotTools.csharp");
+					const config = vscode.workspace.getConfiguration("godotToolsCsharp.csharp");
 					// Use secondary style if Ctrl+Shift was held during drag start
 					const styleKey = useSecondaryStyle
 						? config.get<string>("secondaryNodeReferenceStyle", "lazyField")

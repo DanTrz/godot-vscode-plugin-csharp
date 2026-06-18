@@ -1,9 +1,9 @@
 {
-	"name": "godot-tools",
-	"displayName": "Godot Tools C# (Fork)",
+	"name": "godot-tools-csharp",
+	"displayName": "Godot Tools C#",
 	"icon": "icon.png",
-	"version": "2.6.3+csharp.2",
-	"description": "C# Enhanced Fork by DanTrz, based on the original godot-tools plugin - based on 2.6.0",
+	"version": "1.0.0",
+	"description": "C# enhanced tooling for Godot — LSP, debugging, scene preview, drag & drop. Based on godot-tools",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/DanTrz/godot-vscode-plugin-csharp"
@@ -13,7 +13,7 @@
 	},
 	"license": "MIT",
 	"author": "DanTrz",
-	"publisher": "geequlim",
+	"publisher": "dantrz",
 	"engines": {
 		"vscode": "^1.96.0"
 	},
@@ -58,33 +58,33 @@
 		],
 		"commands": [
 			{
-				"category": "Godot Tools",
-				"command": "godotTools.openEditor",
+				"category": "Godot Tools C#",
+				"command": "godotToolsCsharp.openEditor",
 				"title": "Open workspace with Godot editor"
 			},
 			{
-				"category": "Godot Tools",
-				"command": "godotTools.openEditorSettings",
+				"category": "Godot Tools C#",
+				"command": "godotToolsCsharp.openEditorSettings",
 				"title": "Open EditorSettings File"
 			},
 			{
-				"category": "Godot Tools",
-				"command": "godotTools.startLanguageServer",
+				"category": "Godot Tools C#",
+				"command": "godotToolsCsharp.startLanguageServer",
 				"title": "Start the GDScript Language Server for this workspace"
 			},
 			{
-				"category": "Godot Tools",
-				"command": "godotTools.stopLanguageServer",
+				"category": "Godot Tools C#",
+				"command": "godotToolsCsharp.stopLanguageServer",
 				"title": "Stop the GDScript Language Server for this workspace"
 			},
 			{
-				"category": "Godot Tools",
-				"command": "godotTools.listGodotClasses",
+				"category": "Godot Tools C#",
+				"command": "godotToolsCsharp.listGodotClasses",
 				"title": "List Godot classes"
 			},
 			{
-				"category": "Godot Tools",
-				"command": "godotTools.debugger.inspectNode",
+				"category": "Godot Tools C#",
+				"command": "godotToolsCsharp.debugger.inspectNode",
 				"title": "Inspect Remote Node",
 				"icon": {
 					"light": "resources/godot_icons/light/GuiVisibilityVisible.svg",
@@ -92,8 +92,8 @@
 				}
 			},
 			{
-				"category": "Godot Tools",
-				"command": "godotTools.debugger.refreshSceneTree",
+				"category": "Godot Tools C#",
+				"command": "godotToolsCsharp.debugger.refreshSceneTree",
 				"title": "Refresh",
 				"icon": {
 					"light": "resources/godot_icons/light/Reload.svg",
@@ -101,8 +101,8 @@
 				}
 			},
 			{
-				"category": "Godot Tools",
-				"command": "godotTools.debugger.refreshInspector",
+				"category": "Godot Tools C#",
+				"command": "godotToolsCsharp.debugger.refreshInspector",
 				"title": "Refresh",
 				"icon": {
 					"light": "resources/godot_icons/light/Reload.svg",
@@ -110,8 +110,8 @@
 				}
 			},
 			{
-				"category": "Godot Tools",
-				"command": "godotTools.debugger.editValue",
+				"category": "Godot Tools C#",
+				"command": "godotToolsCsharp.debugger.editValue",
 				"title": "Edit value",
 				"icon": {
 					"light": "resources/godot_icons/light/Edit.svg",
@@ -119,8 +119,8 @@
 				}
 			},
 			{
-				"category": "Godot Tools",
-				"command": "godotTools.debugger.debugCurrentFile",
+				"category": "Godot Tools C#",
+				"command": "godotToolsCsharp.debugger.debugCurrentFile",
 				"title": "Debug Current File",
 				"icon": {
 					"light": "resources/godot_icons/light/PlayScene.svg",
@@ -128,8 +128,8 @@
 				}
 			},
 			{
-				"category": "Godot Tools",
-				"command": "godotTools.debugger.debugPinnedFile",
+				"category": "Godot Tools C#",
+				"command": "godotToolsCsharp.debugger.debugPinnedFile",
 				"title": "Debug Pinned File",
 				"icon": {
 					"light": "resources/godot_icons/light/Play.svg",
@@ -137,25 +137,25 @@
 				}
 			},
 			{
-				"category": "Godot Tools",
-				"command": "godotTools.debugger.pinFile",
+				"category": "Godot Tools C#",
+				"command": "godotToolsCsharp.debugger.pinFile",
 				"title": "Pin Scene File",
 				"icon": "resources/pin_off.svg"
 			},
 			{
-				"category": "Godot Tools",
-				"command": "godotTools.debugger.unpinFile",
+				"category": "Godot Tools C#",
+				"command": "godotToolsCsharp.debugger.unpinFile",
 				"title": "Unpin Scene File",
 				"icon": "resources/pin_on.svg"
 			},
 			{
-				"category": "Godot Tools",
-				"command": "godotTools.debugger.openPinnedFile",
+				"category": "Godot Tools C#",
+				"command": "godotToolsCsharp.debugger.openPinnedFile",
 				"title": "Open the currently pinned scene"
 			},
 			{
-				"category": "Godot Tools",
-				"command": "godotTools.scenePreview.refresh",
+				"category": "Godot Tools C#",
+				"command": "godotToolsCsharp.scenePreview.refresh",
 				"title": "Refresh Scene Preview",
 				"icon": {
 					"light": "resources/godot_icons/light/Reload.svg",
@@ -163,8 +163,8 @@
 				}
 			},
 			{
-				"category": "Godot Tools",
-				"command": "godotTools.scenePreview.openCurrentScene",
+				"category": "Godot Tools C#",
+				"command": "godotToolsCsharp.scenePreview.openCurrentScene",
 				"title": "Open the Scene Preview's current scene",
 				"icon": {
 					"light": "resources/godot_icons/light/PackedScene.svg",
@@ -172,8 +172,8 @@
 				}
 			},
 			{
-				"category": "Godot Tools",
-				"command": "godotTools.scenePreview.openMainScript",
+				"category": "Godot Tools C#",
+				"command": "godotToolsCsharp.scenePreview.openMainScript",
 				"title": "Open the main script of the Scene Preview's current scene",
 				"icon": {
 					"light": "resources/godot_icons/light/Script.svg",
@@ -181,8 +181,8 @@
 				}
 			},
 			{
-				"category": "Godot Tools",
-				"command": "godotTools.scenePreview.lock",
+				"category": "Godot Tools C#",
+				"command": "godotToolsCsharp.scenePreview.lock",
 				"title": "Lock Scene Preview",
 				"icon": {
 					"light": "resources/godot_icons/light/Unlock.svg",
@@ -190,8 +190,8 @@
 				}
 			},
 			{
-				"category": "Godot Tools",
-				"command": "godotTools.scenePreview.unlock",
+				"category": "Godot Tools C#",
+				"command": "godotToolsCsharp.scenePreview.unlock",
 				"title": "Unlock Scene Preview",
 				"icon": {
 					"light": "resources/godot_icons/light/Lock.svg",
@@ -199,28 +199,28 @@
 				}
 			},
 			{
-				"category": "Godot Tools",
-				"command": "godotTools.scenePreview.goToDefinition",
+				"category": "Godot Tools C#",
+				"command": "godotToolsCsharp.scenePreview.goToDefinition",
 				"title": "Go to Definition"
 			},
 			{
-				"category": "Godot Tools",
-				"command": "godotTools.scenePreview.openDocumentation",
+				"category": "Godot Tools C#",
+				"command": "godotToolsCsharp.scenePreview.openDocumentation",
 				"title": "Open Documentation"
 			},
 			{
-				"category": "Godot Tools",
-				"command": "godotTools.scenePreview.copyNodePath",
+				"category": "Godot Tools C#",
+				"command": "godotToolsCsharp.scenePreview.copyNodePath",
 				"title": "Copy Node Path"
 			},
 			{
-				"category": "Godot Tools",
-				"command": "godotTools.scenePreview.copyResourcePath",
+				"category": "Godot Tools C#",
+				"command": "godotToolsCsharp.scenePreview.copyResourcePath",
 				"title": "Copy Resource Path"
 			},
 			{
-				"category": "Godot Tools",
-				"command": "godotTools.scenePreview.openScene",
+				"category": "Godot Tools C#",
+				"command": "godotToolsCsharp.scenePreview.openScene",
 				"title": "Open Scene",
 				"icon": {
 					"light": "resources/InstanceOptions.svg",
@@ -228,8 +228,8 @@
 				}
 			},
 			{
-				"category": "Godot Tools",
-				"command": "godotTools.scenePreview.openScript",
+				"category": "Godot Tools C#",
+				"command": "godotToolsCsharp.scenePreview.openScript",
 				"title": "Open Script",
 				"icon": {
 					"light": "resources/godot_icons/light/Script.svg",
@@ -237,18 +237,18 @@
 				}
 			},
 			{
-				"category": "Godot Tools",
-				"command": "godotTools.switchSceneScript",
+				"category": "Godot Tools C#",
+				"command": "godotToolsCsharp.switchSceneScript",
 				"title": "Switch Scene/Script"
 			},
 			{
-				"category": "Godot Tools",
-				"command": "godotTools.copyResourcePath",
+				"category": "Godot Tools C#",
+				"command": "godotToolsCsharp.copyResourcePath",
 				"title": "Copy Resource Path"
 			},
 			{
-				"category": "Godot Tools",
-				"command": "godotTools.sceneTreeMonitor.stop",
+				"category": "Godot Tools C#",
+				"command": "godotToolsCsharp.sceneTreeMonitor.stop",
 				"title": "Stop Scene Tree Monitor",
 				"icon": {
 					"light": "resources/godot_icons/light/Stop.svg",
@@ -256,83 +256,83 @@
 				}
 			},
 			{
-				"category": "Godot Tools",
-				"command": "godotTools.debugger.pause",
+				"category": "Godot Tools C#",
+				"command": "godotToolsCsharp.debugger.pause",
 				"title": "Pause Game",
 				"icon": "$(debug-pause)"
 			},
 			{
-				"category": "Godot Tools",
-				"command": "godotTools.debugger.resume",
+				"category": "Godot Tools C#",
+				"command": "godotToolsCsharp.debugger.resume",
 				"title": "Resume Game",
 				"icon": "$(debug-continue)"
 			},
 			{
-				"category": "Godot Tools",
-				"command": "godotTools.debugger.nextFrame",
+				"category": "Godot Tools C#",
+				"command": "godotToolsCsharp.debugger.nextFrame",
 				"title": "Next Frame (Step)",
 				"icon": "$(debug-step-over)"
 			}
 		],
 		"keybindings": [
 			{
-				"command": "godotTools.switchSceneScript",
+				"command": "godotToolsCsharp.switchSceneScript",
 				"key": "alt+o",
-				"when": "editorLangId in godotTools.context.godotFiles && editorTextFocus"
+				"when": "editorLangId in godotToolsCsharp.context.godotFiles && editorTextFocus"
 			},
 			{
-				"command": "godotTools.debugger.pause",
+				"command": "godotToolsCsharp.debugger.pause",
 				"key": "f9",
-				"when": "godotTools.context.sceneTreeMonitor.running && !godotTools.context.sceneTreeMonitor.paused"
+				"when": "godotToolsCsharp.context.sceneTreeMonitor.running && !godotToolsCsharp.context.sceneTreeMonitor.paused"
 			},
 			{
-				"command": "godotTools.debugger.resume",
+				"command": "godotToolsCsharp.debugger.resume",
 				"key": "f9",
-				"when": "godotTools.context.sceneTreeMonitor.running && godotTools.context.sceneTreeMonitor.paused"
+				"when": "godotToolsCsharp.context.sceneTreeMonitor.running && godotToolsCsharp.context.sceneTreeMonitor.paused"
 			},
 			{
-				"command": "godotTools.debugger.nextFrame",
+				"command": "godotToolsCsharp.debugger.nextFrame",
 				"key": "f10",
-				"when": "godotTools.context.sceneTreeMonitor.running && godotTools.context.sceneTreeMonitor.paused"
+				"when": "godotToolsCsharp.context.sceneTreeMonitor.running && godotToolsCsharp.context.sceneTreeMonitor.paused"
 			}
 		],
 		"configuration": {
 			"type": "object",
-			"title": "Godot Tools",
+			"title": "Godot Tools C#",
 			"properties": {
-				"godotTools.documentation.pageScale": {
+				"godotToolsCsharp.documentation.pageScale": {
 					"type": "integer",
 					"default": 100,
 					"minimum": 50,
 					"maximum": 200,
 					"description": "Scale factor (%) to apply to the Godot documentation viewer."
 				},
-				"godotTools.documentation.displayMinimap": {
+				"godotToolsCsharp.documentation.displayMinimap": {
 					"type": "boolean",
 					"default": true,
 					"description": "Whether to display the minimap for the Godot documentation viewer."
 				},
-				"godotTools.editorPath.godot3": {
+				"godotToolsCsharp.editorPath.godot3": {
 					"type": "string",
 					"default": "godot3",
 					"description": "Path to the Godot 3 editor executable. Supports environment variables using '${env:VAR_NAME}'."
 				},
-				"godotTools.editorPath.godot4": {
+				"godotToolsCsharp.editorPath.godot4": {
 					"type": "string",
 					"default": "godot",
 					"description": "Path to the Godot 4 editor executable. Supports environment variables using '${env:VAR_NAME}'."
 				},
-				"godotTools.editor.verbose": {
+				"godotToolsCsharp.editor.verbose": {
 					"type": "boolean",
 					"default": false,
 					"description": "Whether to launch the Godot Editor with the --verbose flag"
 				},
-				"godotTools.editor.revealTerminal": {
+				"godotToolsCsharp.editor.revealTerminal": {
 					"type": "boolean",
 					"default": true,
 					"description": "Whether to reveal the terminal when launching the Godot Editor"
 				},
-				"godotTools.formatter.maxEmptyLines": {
+				"godotToolsCsharp.formatter.maxEmptyLines": {
 					"type": "string",
 					"enum": [
 						"1",
@@ -345,12 +345,12 @@
 					"default": "2",
 					"description": "Number of empty lines allowed anywhere in the file"
 				},
-				"godotTools.formatter.denseFunctionParameters": {
+				"godotToolsCsharp.formatter.denseFunctionParameters": {
 					"type": "boolean",
 					"default": false,
 					"description": "Whether extra space should be removed from function parameter lists"
 				},
-				"godotTools.formatter.spacesBeforeEndOfLineComment": {
+				"godotToolsCsharp.formatter.spacesBeforeEndOfLineComment": {
 					"type": "string",
 					"enum": [
 						"1",
@@ -363,44 +363,44 @@
 					"default": "1",
 					"description": "Number of spaces before an end-of-line comment"
 				},
-				"godotTools.lsp.serverHost": {
+				"godotToolsCsharp.lsp.serverHost": {
 					"type": "string",
 					"default": "127.0.0.1",
 					"description": "The server host of the GDScript language server"
 				},
-				"godotTools.lsp.serverPort": {
+				"godotToolsCsharp.lsp.serverPort": {
 					"type": "number",
 					"default": 6008,
 					"minimum": 0,
 					"maximum": 65535,
 					"description": "The server port of the GDScript language server"
 				},
-				"godotTools.lsp.headless": {
+				"godotToolsCsharp.lsp.headless": {
 					"type": "boolean",
 					"default": false,
 					"description": "Whether to launch the LSP as a headless child process"
 				},
-				"godotTools.lsp.autoDetectGodotProject": {
+				"godotToolsCsharp.lsp.autoDetectGodotProject": {
 					"type": "boolean",
 					"default": true,
 					"description": "Only start or connect the Godot LSP when the workspace contains a project.godot file. Disable to keep the previous always-attempt behavior."
 				},
-				"godotTools.lsp.autoReconnect.enabled": {
+				"godotToolsCsharp.lsp.autoReconnect.enabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "Whether the plugin should attempt to reconnect to the GDScript language server"
 				},
-				"godotTools.lsp.autoReconnect.cooldown": {
+				"godotToolsCsharp.lsp.autoReconnect.cooldown": {
 					"type": "number",
 					"default": 3000,
 					"description": "The number of milliseconds to wait before attempting to reconnect"
 				},
-				"godotTools.lsp.autoReconnect.attempts": {
+				"godotToolsCsharp.lsp.autoReconnect.attempts": {
 					"type": "number",
 					"default": 10,
 					"description": "How many times the client will attempt to reconnect"
 				},
-				"godotTools.scenePreview.previewRelatedScenes": {
+				"godotToolsCsharp.scenePreview.previewRelatedScenes": {
 					"enum": [
 						"anyFolder",
 						"sameFolder",
@@ -414,17 +414,17 @@
 					"default": "sameFolder",
 					"description": "Controls where the Scene Preview will search for related scenes when viewing a script file."
 				},
-				"godotTools.inlayHints.gdscript": {
+				"godotToolsCsharp.inlayHints.gdscript": {
 					"type": "boolean",
 					"default": false,
 					"description": "Whether to enable inlay hints in GDScript files (experimental)"
 				},
-				"godotTools.inlayHints.gdresource": {
+				"godotToolsCsharp.inlayHints.gdresource": {
 					"type": "boolean",
 					"default": true,
 					"description": "Whether to enable inlay hints in GDResource (.tscn, .tres, etc) files"
 				},
-				"godotTools.csharp.nodeReferenceStyle": {
+				"godotToolsCsharp.csharp.nodeReferenceStyle": {
 					"type": "string",
 					"enum": [
 						"exportPrivate",
@@ -441,7 +441,7 @@
 					"default": "exportPublic",
 					"markdownDescription": "**Primary** C# code style when dragging nodes from Scene Preview to empty lines.\n\nUsed for normal drag operations."
 				},
-				"godotTools.csharp.secondaryNodeReferenceStyle": {
+				"godotToolsCsharp.csharp.secondaryNodeReferenceStyle": {
 					"type": "string",
 					"enum": [
 						"exportPrivate",
@@ -458,26 +458,26 @@
 					"default": "lazyField",
 					"markdownDescription": "**Secondary** C# code style when dragging nodes with **Ctrl** held.\n\nUse this for an alternate style without changing settings."
 				},
-				"godotTools.csharp.dotnetWatch": {
+				"godotToolsCsharp.csharp.dotnetWatch": {
 					"type": "boolean",
 					"default": false,
 					"markdownDescription": "Start `dotnet watch build` in the background to auto-rebuild C# on save. When enabled, Godot will automatically detect assembly changes without needing to click the Rebuild button."
 				},
-				"godotTools.sceneTreeMonitor.port": {
+				"godotToolsCsharp.sceneTreeMonitor.port": {
 					"type": "number",
 					"default": 6007,
 					"minimum": 1,
 					"maximum": 65535,
 					"description": "Port for the Scene Tree Monitor to listen on. Godot will connect to this port with --remote-debug."
 				},
-				"godotTools.sceneTreeMonitor.refreshInterval": {
+				"godotToolsCsharp.sceneTreeMonitor.refreshInterval": {
 					"type": "number",
 					"default": 500,
 					"minimum": 0,
 					"maximum": 60000,
 					"description": "Auto-refresh interval in milliseconds (0 = manual refresh only). Default: 500ms (half second)."
 				},
-				"godotTools.sceneTreeMonitor.autoStart": {
+				"godotToolsCsharp.sceneTreeMonitor.autoStart": {
 					"type": "boolean",
 					"default": true,
 					"description": "Automatically start Scene Tree Monitor when a C# debug session starts in a Godot project."
@@ -752,7 +752,7 @@
 		"viewsContainers": {
 			"activitybar": [
 				{
-					"id": "godotTools",
+					"id": "godotToolsCsharp",
 					"title": "Godot Tools C#",
 					"icon": "resources/godot_icon.svg"
 				}
@@ -761,25 +761,25 @@
 		"views": {
 			"debug": [
 				{
-					"id": "godotTools.gameDebugControls",
+					"id": "godotToolsCsharp.gameDebugControls",
 					"name": "Game Debug Controls",
 					"icon": "resources/godot_icon.svg"
 				},
 				{
-					"id": "godotTools.activeSceneTree",
+					"id": "godotToolsCsharp.activeSceneTree",
 					"name": "Active Scene Tree",
 					"icon": "resources/godot_icon.svg"
 				},
 				{
-					"id": "godotTools.nodeInspector",
+					"id": "godotToolsCsharp.nodeInspector",
 					"name": "Inspector",
 					"type": "webview",
 					"icon": "resources/godot_icon.svg"
 				}
 			],
-			"godotTools": [
+			"godotToolsCsharp": [
 				{
-					"id": "godotTools.scenePreview",
+					"id": "godotToolsCsharp.scenePreview",
 					"name": "Scene Preview",
 					"type": "webview",
 					"icon": "resources/godot_icon.svg"
@@ -788,190 +788,190 @@
 		},
 		"viewsWelcome": [
 			{
-				"view": "godotTools.gameDebugControls",
+				"view": "godotToolsCsharp.gameDebugControls",
 				"contents": "Debug controls will appear when connected to a running Godot game.\n\nPress F5 to start debugging."
 			},
 			{
-				"view": "godotTools.activeSceneTree",
+				"view": "godotToolsCsharp.activeSceneTree",
 				"contents": "Press F5 to start debugging with Scene Tree.\n\nMake sure your launch.json includes:\n`--remote-debug tcp://127.0.0.1:6007`\n\nSee [setup instructions](https://github.com/DanTrz/godot-vscode-plugin-csharp) for details."
 			},
 			{
-				"view": "godotTools.nodeInspector",
+				"view": "godotToolsCsharp.nodeInspector",
 				"contents": "Node has not been inspected"
 			},
 			{
-				"view": "godotTools.scenePreview",
+				"view": "godotToolsCsharp.scenePreview",
 				"contents": "Open a Scene to see a preview of its structure"
 			}
 		],
 		"menus": {
 			"commandPalette": [
 				{
-					"command": "godotTools.listGodotClasses",
-					"when": "godotTools.context.connectedToLSP"
+					"command": "godotToolsCsharp.listGodotClasses",
+					"when": "godotToolsCsharp.context.connectedToLSP"
 				},
 				{
-					"command": "godotTools.scenePreview.goToDefinition",
+					"command": "godotToolsCsharp.scenePreview.goToDefinition",
 					"when": "false"
 				},
 				{
-					"command": "godotTools.scenePreview.openDocumentation",
+					"command": "godotToolsCsharp.scenePreview.openDocumentation",
 					"when": "false"
 				},
 				{
-					"command": "godotTools.scenePreview.copyNodePath",
+					"command": "godotToolsCsharp.scenePreview.copyNodePath",
 					"when": "false"
 				},
 				{
-					"command": "godotTools.scenePreview.copyResourcePath",
+					"command": "godotToolsCsharp.scenePreview.copyResourcePath",
 					"when": "false"
 				},
 				{
-					"command": "godotTools.scenePreview.openScript",
+					"command": "godotToolsCsharp.scenePreview.openScript",
 					"when": "false"
 				},
 				{
-					"command": "godotTools.scenePreview.openScene",
+					"command": "godotToolsCsharp.scenePreview.openScene",
 					"when": "false"
 				},
 				{
-					"command": "godotTools.debugger.editValue",
+					"command": "godotToolsCsharp.debugger.editValue",
 					"when": "false"
 				},
 				{
-					"command": "godotTools.debugger.inspectNode",
+					"command": "godotToolsCsharp.debugger.inspectNode",
 					"when": "false"
 				},
 				{
-					"command": "godotTools.debugger.refreshSceneTree",
+					"command": "godotToolsCsharp.debugger.refreshSceneTree",
 					"when": "false"
 				},
 				{
-					"command": "godotTools.debugger.refreshInspector",
+					"command": "godotToolsCsharp.debugger.refreshInspector",
 					"when": "false"
 				},
 				{
-					"command": "godotTools.debugger.pause",
+					"command": "godotToolsCsharp.debugger.pause",
 					"when": "false"
 				},
 				{
-					"command": "godotTools.debugger.resume",
+					"command": "godotToolsCsharp.debugger.resume",
 					"when": "false"
 				},
 				{
-					"command": "godotTools.debugger.nextFrame",
+					"command": "godotToolsCsharp.debugger.nextFrame",
 					"when": "false"
 				}
 			],
 			"view/title": [
 				{
-					"command": "godotTools.sceneTreeMonitor.stop",
-					"when": "view == godotTools.activeSceneTree && godotTools.context.sceneTreeMonitor.running",
+					"command": "godotToolsCsharp.sceneTreeMonitor.stop",
+					"when": "view == godotToolsCsharp.activeSceneTree && godotToolsCsharp.context.sceneTreeMonitor.running",
 					"group": "navigation@1"
 				},
 				{
-					"command": "godotTools.debugger.refreshSceneTree",
-					"when": "view == godotTools.activeSceneTree",
+					"command": "godotToolsCsharp.debugger.refreshSceneTree",
+					"when": "view == godotToolsCsharp.activeSceneTree",
 					"group": "navigation@2"
 				},
 				{
-					"command": "godotTools.debugger.refreshInspector",
-					"when": "view == godotTools.nodeInspector",
+					"command": "godotToolsCsharp.debugger.refreshInspector",
+					"when": "view == godotToolsCsharp.nodeInspector",
 					"group": "navigation"
 				},
 				{
-					"command": "godotTools.scenePreview.lock",
-					"when": "view == godotTools.scenePreview && !godotTools.context.scenePreview.locked",
+					"command": "godotToolsCsharp.scenePreview.lock",
+					"when": "view == godotToolsCsharp.scenePreview && !godotToolsCsharp.context.scenePreview.locked",
 					"group": "navigation@1"
 				},
 				{
-					"command": "godotTools.scenePreview.unlock",
-					"when": "view == godotTools.scenePreview && godotTools.context.scenePreview.locked",
+					"command": "godotToolsCsharp.scenePreview.unlock",
+					"when": "view == godotToolsCsharp.scenePreview && godotToolsCsharp.context.scenePreview.locked",
 					"group": "navigation@1"
 				},
 				{
-					"command": "godotTools.scenePreview.refresh",
-					"when": "view == godotTools.scenePreview",
+					"command": "godotToolsCsharp.scenePreview.refresh",
+					"when": "view == godotToolsCsharp.scenePreview",
 					"group": "navigation@2"
 				},
 				{
-					"command": "godotTools.scenePreview.openMainScript",
-					"when": "view == godotTools.scenePreview",
+					"command": "godotToolsCsharp.scenePreview.openMainScript",
+					"when": "view == godotToolsCsharp.scenePreview",
 					"group": "navigation@3"
 				},
 				{
-					"command": "godotTools.scenePreview.openCurrentScene",
-					"when": "view == godotTools.scenePreview",
+					"command": "godotToolsCsharp.scenePreview.openCurrentScene",
+					"when": "view == godotToolsCsharp.scenePreview",
 					"group": "navigation@4"
 				}
 			],
 			"view/item/context": [
 				{
-					"command": "godotTools.debugger.inspectNode",
-					"when": "view == godotTools.activeSceneTree",
+					"command": "godotToolsCsharp.debugger.inspectNode",
+					"when": "view == godotToolsCsharp.activeSceneTree",
 					"group": "inline"
 				}
 			],
 			"explorer/context": [
 				{
-					"command": "godotTools.debugger.pinFile",
+					"command": "godotToolsCsharp.debugger.pinFile",
 					"group": "2_workspace",
-					"when": "resourceLangId in godotTools.context.sceneLikeFiles && !(resourcePath in godotTools.context.pinnedScene)"
+					"when": "resourceLangId in godotToolsCsharp.context.sceneLikeFiles && !(resourcePath in godotToolsCsharp.context.pinnedScene)"
 				},
 				{
-					"command": "godotTools.debugger.unpinFile",
+					"command": "godotToolsCsharp.debugger.unpinFile",
 					"group": "2_workspace",
-					"when": "resourceLangId in godotTools.context.sceneLikeFiles && (resourcePath in godotTools.context.pinnedScene)"
+					"when": "resourceLangId in godotToolsCsharp.context.sceneLikeFiles && (resourcePath in godotToolsCsharp.context.pinnedScene)"
 				},
 				{
-					"command": "godotTools.copyResourcePath",
+					"command": "godotToolsCsharp.copyResourcePath",
 					"group": "6_copypath"
 				}
 			],
 			"editor/title/run": [
 				{
-					"command": "godotTools.debugger.debugCurrentFile",
+					"command": "godotToolsCsharp.debugger.debugCurrentFile",
 					"group": "navigation@10",
-					"when": "editorLangId in godotTools.context.sceneLikeFiles && !isInDiffEditor && !virtualWorkspace"
+					"when": "editorLangId in godotToolsCsharp.context.sceneLikeFiles && !isInDiffEditor && !virtualWorkspace"
 				},
 				{
-					"command": "godotTools.debugger.debugPinnedFile",
+					"command": "godotToolsCsharp.debugger.debugPinnedFile",
 					"group": "navigation@10",
-					"when": "editorLangId in godotTools.context.sceneLikeFiles && !isInDiffEditor && !virtualWorkspace"
+					"when": "editorLangId in godotToolsCsharp.context.sceneLikeFiles && !isInDiffEditor && !virtualWorkspace"
 				}
 			],
 			"editor/title": [
 				{
-					"command": "godotTools.debugger.pinFile",
+					"command": "godotToolsCsharp.debugger.pinFile",
 					"group": "navigation@11",
-					"when": "editorLangId in godotTools.context.sceneLikeFiles && !isInDiffEditor && !virtualWorkspace && !(resourcePath in godotTools.context.pinnedScene)"
+					"when": "editorLangId in godotToolsCsharp.context.sceneLikeFiles && !isInDiffEditor && !virtualWorkspace && !(resourcePath in godotToolsCsharp.context.pinnedScene)"
 				},
 				{
-					"command": "godotTools.debugger.unpinFile",
+					"command": "godotToolsCsharp.debugger.unpinFile",
 					"group": "navigation@11",
-					"when": "editorLangId in godotTools.context.sceneLikeFiles && !isInDiffEditor && !virtualWorkspace && (resourcePath in godotTools.context.pinnedScene)"
+					"when": "editorLangId in godotToolsCsharp.context.sceneLikeFiles && !isInDiffEditor && !virtualWorkspace && (resourcePath in godotToolsCsharp.context.pinnedScene)"
 				}
 			],
 			"editor/title/context": [
 				{
-					"command": "godotTools.copyResourcePath",
+					"command": "godotToolsCsharp.copyResourcePath",
 					"group": "1_godot"
 				},
 				{
-					"command": "godotTools.debugger.pinFile",
+					"command": "godotToolsCsharp.debugger.pinFile",
 					"group": "1_godot",
-					"when": "resourceLangId in godotTools.context.sceneLikeFiles && !(resourcePath in godotTools.context.pinnedScene)"
+					"when": "resourceLangId in godotToolsCsharp.context.sceneLikeFiles && !(resourcePath in godotToolsCsharp.context.pinnedScene)"
 				},
 				{
-					"command": "godotTools.debugger.unpinFile",
+					"command": "godotToolsCsharp.debugger.unpinFile",
 					"group": "1_godot",
-					"when": "resourceLangId in godotTools.context.sceneLikeFiles && (resourcePath in godotTools.context.pinnedScene)"
+					"when": "resourceLangId in godotToolsCsharp.context.sceneLikeFiles && (resourcePath in godotToolsCsharp.context.pinnedScene)"
 				}
 			],
 			"editor/context": [
 				{
-					"command": "godotTools.switchSceneScript",
-					"when": "editorLangId in godotTools.context.godotFiles",
+					"command": "godotToolsCsharp.switchSceneScript",
+					"when": "editorLangId in godotToolsCsharp.context.godotFiles",
 					"group": "custom1@1"
 				}
 			]

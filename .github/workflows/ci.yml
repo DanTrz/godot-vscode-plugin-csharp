@@ -71,11 +71,11 @@ jobs:
       - name: Lint and build extension
         run: |
           npm run lint
-          npm run package -- --out godot-tools.vsix
-          ls -l godot-tools.vsix
+          npm run package -- --out godot-tools-csharp.vsix
+          ls -l godot-tools-csharp.vsix
 
       - name: Upload extension VSIX
         uses: actions/upload-artifact@v4.6.2
         with:
-          name: godot-tools
-          path: godot-tools.vsix
+          name: godot-tools-csharp
+          path: godot-tools-csharp.vsix

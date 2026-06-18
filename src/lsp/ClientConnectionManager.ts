@@ -82,7 +82,7 @@ export class ClientConnectionManager {
 		set_context("connectedToLSP", false);
 
 		this.statusWidget = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right);
-		this.statusWidget.command = "godotTools.checkStatus";
+		this.statusWidget.command = "godotToolsCsharp.checkStatus";
 		this.statusWidget.show();
 		this.update_status_widget();
 
@@ -794,7 +794,7 @@ export class ClientConnectionManager {
 				this.connect_to_language_server();
 			}
 			if (item === "Open workspace with Godot Editor") {
-				vscode.commands.executeCommand("godotTools.openEditor");
+				vscode.commands.executeCommand("godotToolsCsharp.openEditor");
 				this.connect_to_language_server();
 			}
 		});

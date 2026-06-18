@@ -81,7 +81,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(
 		vscode.workspace.onDidChangeConfiguration((e) => {
-			if (e.affectsConfiguration("godotTools.csharp.dotnetWatch")) {
+			if (e.affectsConfiguration("godotToolsCsharp.csharp.dotnetWatch")) {
 				if (get_configuration("csharp.dotnetWatch")) {
 					globals.dotnetWatch.start();
 				} else {
@@ -268,7 +268,7 @@ async function open_godot_editor_settings() {
  * Returns the executable path for Godot based on the current project's version.
  * Created to allow other extensions to get the path without having to go
  * through the steps of determining the version to get the proper configuration
- * value (godotTools.editorPath.godot3/4).
+ * value (godotToolsCsharp.editorPath.godot3/4).
  * @returns
  */
 async function get_godot_path(): Promise<string | undefined> {

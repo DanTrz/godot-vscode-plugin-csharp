@@ -12,7 +12,7 @@ export class SceneTreeProvider implements TreeDataProvider<SceneNode> {
 	public view: TreeView<SceneNode>;
 
 	constructor() {
-		this.view = window.createTreeView("godotTools.activeSceneTree", {
+		this.view = window.createTreeView("godotToolsCsharp.activeSceneTree", {
 			treeDataProvider: this,
 		});
 	}
@@ -68,7 +68,7 @@ export class SceneTreeProvider implements TreeDataProvider<SceneNode> {
 
 		// Auto-inspect on click: when user clicks a node, automatically inspect it
 		tree_item.command = {
-			command: "godotTools.debugger.inspectNode",
+			command: "godotToolsCsharp.debugger.inspectNode",
 			arguments: [element],
 			title: "Inspect Node"
 		};
